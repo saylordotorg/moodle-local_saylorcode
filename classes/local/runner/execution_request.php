@@ -53,7 +53,7 @@ final class execution_request {
     /** @var string One of the MODE_* constants. */
     private string $mode;
 
-    /** @var array<string, string> Relative path => file contents. */
+    /** @var array Relative path => file contents. */
     private array $files;
 
     /** @var string Standard input supplied to the program. */
@@ -74,7 +74,7 @@ final class execution_request {
      * @param string $requestid Opaque identifier, also used as the idempotency key.
      * @param string $profileid Stable runtime profile id.
      * @param string $mode One of the MODE_* constants.
-     * @param array<string, string> $files Relative path => contents.
+     * @param array $files Relative path => contents.
      * @param string $stdin Standard input.
      * @param array $tests Protected test payload.
      * @param array $limits Resolved resource limits.
@@ -172,7 +172,7 @@ final class execution_request {
     /**
      * Get the submitted files.
      *
-     * @return array<string, string>
+     * @return array Relative path => file contents.
      */
     public function get_files(): array {
         return $this->files;

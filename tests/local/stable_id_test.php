@@ -62,7 +62,7 @@ final class stable_id_test extends \advanced_testcase {
     /**
      * Values that must not be accepted as stable ids.
      *
-     * @return array<string, array{string}>
+     * @return array Each entry is a single candidate value.
      */
     public static function malformed_provider(): array {
         return [

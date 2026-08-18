@@ -80,7 +80,7 @@ class profile_manager {
     /**
      * Menu of enabled profiles for a settings or authoring form.
      *
-     * @return array<string, string> Profile id => display name.
+     * @return array Profile id => display name.
      */
     public function get_menu(): array {
         $menu = [];

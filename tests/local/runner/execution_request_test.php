@@ -30,7 +30,7 @@ final class execution_request_test extends \advanced_testcase {
     /**
      * Paths that must be rejected before they can reach a provider.
      *
-     * @return array<string, array{string}>
+     * @return array Each entry is a single candidate value.
      */
     public static function unsafe_path_provider(): array {
         return [
