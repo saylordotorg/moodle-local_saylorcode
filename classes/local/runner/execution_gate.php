@@ -35,7 +35,6 @@ use cache;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class execution_gate {
-
     /** @var int Seconds after which a stale in flight marker is ignored. */
     private const LEASE_SECONDS = 60;
 
