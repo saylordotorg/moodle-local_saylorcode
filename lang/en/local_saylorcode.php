@@ -24,6 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['exerciseidinvalid'] = '{$a} is not a valid exercise reference. The expected form is COURSE-Unn-Enn, for example CS101-U05-E03.';
+$string['exercisenotpublished'] = 'Exercise {$a} is not published yet. The reference is valid, so this page will show the exercise once it has been authored and approved in the library.';
+$string['exercisetitle'] = 'Exercise {$a}';
 $string['framesomitted'] = 'Some internal lines were removed from this message.';
 $string['healthbadresponse'] = 'The runner answered, but the response could not be understood.';
 $string['healthnourl'] = 'No runner address has been configured.';
