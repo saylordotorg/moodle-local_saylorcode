@@ -383,6 +383,12 @@ class jobe_provider implements provider_interface {
      * @return curl
      */
     protected function new_curl(): curl {
+        global $CFG;
+
+        // The curl class is a legacy global class rather than an autoloaded
+        // one, and filelib is not always included yet in CLI or task context.
+        require_once($CFG->libdir . '/filelib.php');
+
         $curl = new curl();
         $curl->setopt([
             'CURLOPT_TIMEOUT' => $this->timeout,
