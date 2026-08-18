@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for the Saylor Code Studio shared service layer.
+ * Cache definitions for the Saylor Code Studio service layer.
  *
  * @package    local_saylorcode
  * @copyright  2026 Saylor Academy
@@ -24,9 +24,16 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'local_saylorcode';
-$plugin->version   = 2026081801;
-$plugin->requires  = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 405];
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0 (Phase 1 vertical slice)';
+$definitions = [
+
+    // Tracks how many executions each user has in flight. Deliberately short
+    // lived and non persistent: losing it costs at most a briefly relaxed
+    // limit, whereas persisting it would mean a write on every Run.
+    'executiongate' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => false,
+        'staticacceleration' => true,
+        'ttl' => 300,
+    ],
+];
