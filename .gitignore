@@ -1,0 +1,17 @@
+# Moodle plugin build and CI artefacts
+node_modules/
+vendor/
+moodle/
+.moodle-plugin-ci.yml.bak
+
+# Editor and OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local test output
+.phpunit.result.cache
+phpunit.xml
+behat.yml
