@@ -389,7 +389,13 @@ class jobe_provider implements provider_interface {
         // one, and filelib is not always included yet in CLI or task context.
         require_once($CFG->libdir . '/filelib.php');
 
-        $curl = new curl();
+        // Moodle's cURL security helper blocks private address ranges to
+        // prevent server side request forgery. That protection exists for URLs
+        // that originate from user input; this one is a site administration
+        // setting, and the runner is deliberately on a private address that is
+        // unreachable from the internet. Without this the request to our own
+        // sandbox is rejected as a blocked URL.
+        $curl = new curl(['ignoresecurity' => true]);
         $curl->setopt([
             'CURLOPT_TIMEOUT' => $this->timeout,
             'CURLOPT_CONNECTTIMEOUT' => min(10, $this->timeout),
