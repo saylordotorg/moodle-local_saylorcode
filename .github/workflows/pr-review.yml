@@ -1,0 +1,96 @@
+name: AI PR Review
+
+# Reviews every pull request and posts findings as a comment.
+#
+# This is an advisory check, not an approval. Branch protection requires a
+# human approving review before merge, and this workflow deliberately has no
+# ability to approve or merge. Student code execution is in scope for these
+# plugins, so a second pair of human eyes is the point, not a formality.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whether a review key is configured
+        id: guard
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ANTHROPIC_API_KEY is not set, so the AI review was skipped. Human review is still required."
+          fi
+
+      - name: Collect the diff
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          git diff --unified=3 \
+            "origin/${{ github.base_ref }}...HEAD" > /tmp/pr.diff
+          wc -l /tmp/pr.diff
+
+      - name: Review the change
+        if: steps.guard.outputs.enabled == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request against the Saylor Code Studio plugin suite.
+
+            These plugins run untrusted student code on a sandbox host and store
+            student work, so weight your review towards correctness and safety
+            rather than style. The CI job already enforces Moodle coding style,
+            PHPDoc, PHPUnit and Behat, so do not repeat what it checks.
+
+            Treat these as invariants of the codebase. Flag any change that
+            weakens one, and say which invariant is affected:
+
+            1. Hidden test content must never reach the browser. The only
+               supported path to a browser payload is export_for_student(), and
+               a hidden test must reduce to a counted outcome with no name,
+               expected value, actual value or feedback.
+            2. No personal data may travel to the runner. execution_request
+               deliberately has no user id, name, email or grade; correlation
+               uses an opaque random request id.
+            3. Site settings may only tighten a runtime profile's resource
+               limits, never widen them.
+            4. Runner output shown to a student must be sanitised: sandbox
+               paths, host names and harness stack frames removed, compiler
+               file and line preserved.
+            5. Every web service must check a capability and validate its
+               context. Hiding a control in the interface is not authorisation.
+            6. A student's saved work must never be silently discarded. A save
+               behind newer work from another session is refused, and anything
+               destructive snapshots first.
+            7. Embed tokens are a whitelist. An attribute the filter does not
+               recognise is discarded, never passed through.
+            8. Execution records hold telemetry only and must never contain
+               source code.
+
+            Also look for: SQL built by string concatenation rather than
+            parameters, output rendered with innerHTML where it should be text,
+            missing sesskey or capability checks on state changing requests,
+            database writes without matching upgrade steps, and privacy provider
+            declarations that have drifted from the schema.
+
+            Report findings most serious first. For each one give the file and
+            line, what breaks, and a concrete fix. If you find nothing
+            substantive, say so plainly rather than inventing minor points.
+            Finish by stating that a human approving review is still required.
+          claude_args: |
+            --allowed-tools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*)"
