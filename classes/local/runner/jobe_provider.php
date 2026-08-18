@@ -34,7 +34,6 @@ use local_saylorcode\local\runtime\profile_manager;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class jobe_provider implements provider_interface {
-
     /** @var int Jobe reported a compilation failure. */
     private const JOBE_COMPILATION_ERROR = 11;
 

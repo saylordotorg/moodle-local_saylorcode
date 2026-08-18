@@ -28,7 +28,6 @@ namespace local_saylorcode\local\runner;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class test_result {
-
     /** @var string Author supplied test identifier. */
     private string $testid;
 

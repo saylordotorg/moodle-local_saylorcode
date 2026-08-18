@@ -27,7 +27,6 @@ use coding_exception;
  * @covers     \local_saylorcode\local\stable_id
  */
 final class stable_id_test extends \advanced_testcase {
-
     /**
      * A well formed id parses into its components.
      */

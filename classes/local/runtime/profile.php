@@ -29,7 +29,6 @@ namespace local_saylorcode\local\runtime;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class profile {
-
     /** @var string Stable profile id referenced by exercise content. */
     private string $id;
 

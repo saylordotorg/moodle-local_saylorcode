@@ -28,7 +28,6 @@ namespace local_saylorcode\local\runner;
  * @covers     \local_saylorcode\local\runner\output_sanitiser
  */
 final class output_sanitiser_test extends \advanced_testcase {
-
     /**
      * Sandbox working directories must not be shown to a student.
      */

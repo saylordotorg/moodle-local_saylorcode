@@ -28,7 +28,6 @@ namespace local_saylorcode\local\runtime;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class profile_manager {
-
     /** @var string The Java profile shipped for the CS101 pilot. */
     public const PROFILE_JAVA17 = 'java17-console';
 

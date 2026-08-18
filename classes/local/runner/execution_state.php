@@ -27,7 +27,6 @@ namespace local_saylorcode\local\runner;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class execution_state {
-
     /** @var string Request accepted and waiting for a runner slot. */
     public const QUEUED = 'queued';
 

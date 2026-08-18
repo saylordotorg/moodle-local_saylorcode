@@ -31,7 +31,6 @@ use coding_exception;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class stable_id {
-
     /** @var string Pattern for a well formed stable id. */
     public const PATTERN = '/^[A-Z][A-Z0-9]{1,9}-U\d{2}-E\d{2}$/';
 

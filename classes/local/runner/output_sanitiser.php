@@ -33,7 +33,6 @@ namespace local_saylorcode\local\runner;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class output_sanitiser {
-
     /** @var string Replacement token shown in place of a removed path. */
     public const REDACTED = '[path]';
 

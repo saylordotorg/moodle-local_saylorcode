@@ -27,7 +27,6 @@ use coding_exception;
  * @covers     \local_saylorcode\local\runner\execution_request
  */
 final class execution_request_test extends \advanced_testcase {
-
     /**
      * Paths that must be rejected before they can reach a provider.
      *

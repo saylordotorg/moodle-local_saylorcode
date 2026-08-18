@@ -36,7 +36,6 @@ use core_privacy\local\metadata\provider as metadata_provider;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements metadata_provider {
-
     /**
      * Describe what leaves Moodle and why.
      *

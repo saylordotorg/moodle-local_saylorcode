@@ -24,7 +24,6 @@ namespace local_saylorcode\local\runner;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class health_result {
-
     /** @var bool Whether the backend answered correctly. */
     private bool $healthy;
 

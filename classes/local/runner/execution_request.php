@@ -32,7 +32,6 @@ use coding_exception;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class execution_request {
-
     /** @var string Execute the student program only; never grades. */
     public const MODE_RUN = 'run';
 

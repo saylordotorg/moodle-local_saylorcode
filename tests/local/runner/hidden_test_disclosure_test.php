@@ -31,7 +31,6 @@ namespace local_saylorcode\local\runner;
  * @covers     \local_saylorcode\local\runner\execution_response
  */
 final class hidden_test_disclosure_test extends \advanced_testcase {
-
     /**
      * A hidden test must not leak its name, values or feedback.
      */
