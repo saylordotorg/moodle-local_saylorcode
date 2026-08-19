@@ -70,9 +70,19 @@ if ($action === 'edit' || $action === 'add') {
 
     $exercise = $id ? $DB->get_record('local_saylorcode_exercises', ['id' => $id], '*', MUST_EXIST) : null;
 
+    $draft = $exercise ? $repository->get_draft($exercise) : null;
+    $storedcases = $draft ? json_decode((string) $draft->testcases, true) : [];
+    $storedhints = $draft ? json_decode((string) $draft->hints, true) : [];
+    $storedcases = is_array($storedcases) ? $storedcases : [];
+    $storedhints = is_array($storedhints) ? $storedhints : [];
+
     $form = new exercise_form(
         new moodle_url($pageurl, ['action' => $action, 'id' => $id]),
-        ['exerciseid' => $exercise ? $exercise->id : 0]
+        [
+            'exerciseid' => $exercise ? $exercise->id : 0,
+            'casecount' => count($storedcases),
+            'hintcount' => count($storedhints),
+        ]
     );
 
     if ($form->is_cancelled()) {
@@ -86,8 +96,8 @@ if ($action === 'edit' || $action === 'add') {
             'entryfilename' => $data->entryfilename,
             'startercode' => $data->startercode,
             'referencesolution' => $data->referencesolution,
-            'testcases' => $data->testcases,
-            'hints' => $data->hints,
+            'testcases' => exercise_form::rows_to_cases($data),
+            'hints' => exercise_form::rows_to_hints($data),
         ];
 
         if ($exercise === null) {
@@ -110,9 +120,7 @@ if ($action === 'edit' || $action === 'add') {
     }
 
     if ($exercise !== null) {
-        $draft = $repository->get_draft($exercise);
-
-        $form->set_data([
+        $values = [
             'id' => $exercise->id,
             'stableid' => $exercise->stableid,
             'name' => $exercise->name,
@@ -121,9 +129,22 @@ if ($action === 'edit' || $action === 'add') {
             'entryfilename' => $draft->entryfilename,
             'startercode' => $draft->startercode,
             'referencesolution' => $draft->referencesolution,
-            'testcases' => $draft->testcases,
-            'hints' => $draft->hints,
-        ]);
+        ];
+
+        foreach (array_values($storedcases) as $i => $case) {
+            $values['tcname[' . $i . ']'] = (string) ($case['name'] ?? '');
+            $values['tcstdin[' . $i . ']'] = (string) ($case['stdin'] ?? '');
+            $values['tcexpected[' . $i . ']'] = (string) ($case['expected'] ?? '');
+            $values['tcfeedback[' . $i . ']'] = (string) ($case['feedback'] ?? '');
+            $values['tcpublic[' . $i . ']'] = !empty($case['ispublic']) ? 1 : 0;
+            $values['tcweight[' . $i . ']'] = (float) ($case['weight'] ?? 1);
+        }
+
+        foreach (array_values($storedhints) as $i => $hint) {
+            $values['hinttext[' . $i . ']'] = (string) ($hint['text'] ?? '');
+        }
+
+        $form->set_data($values);
     }
 
     echo $OUTPUT->header();

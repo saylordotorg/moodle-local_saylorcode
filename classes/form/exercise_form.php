@@ -102,27 +102,130 @@ class exercise_form extends moodleform {
         );
         $mform->setType('referencesolution', PARAM_RAW);
 
-        // Test cases and hints stay as JSON here. The structured editors live on
-        // the activity form, and moving them is a separate change from giving
-        // exercises somewhere to live.
-        $mform->addElement(
-            'textarea',
-            'testcases',
-            get_string('exercisetestcases', 'local_saylorcode'),
-            ['rows' => 8, 'cols' => 80, 'spellcheck' => 'false']
-        );
-        $mform->setType('testcases', PARAM_RAW);
-        $mform->addHelpButton('testcases', 'exercisetestcases', 'local_saylorcode');
+        // Rows rather than JSON. An author writing an exercise here should not
+        // have to hand write a data structure that the activity form has
+        // offered as fields since it was built.
+        $mform->addElement('header', 'testcasesheader', get_string('exercisetestcases', 'local_saylorcode'));
+        $mform->addElement('static', 'testcasesintro', '', get_string('exercisetestcases_help', 'local_saylorcode'));
 
-        $mform->addElement(
-            'textarea',
-            'hints',
-            get_string('exercisehints', 'local_saylorcode'),
-            ['rows' => 5, 'cols' => 80, 'spellcheck' => 'false']
+        $cases = [
+            $mform->createElement('text', 'tcname', get_string('tcname', 'local_saylorcode'), ['size' => 40]),
+            $mform->createElement(
+                'textarea',
+                'tcstdin',
+                get_string('tcstdin', 'local_saylorcode'),
+                ['rows' => 2, 'cols' => 45, 'spellcheck' => 'false']
+            ),
+            $mform->createElement(
+                'textarea',
+                'tcexpected',
+                get_string('tcexpected', 'local_saylorcode'),
+                ['rows' => 3, 'cols' => 45, 'spellcheck' => 'false']
+            ),
+            $mform->createElement('text', 'tcfeedback', get_string('tcfeedback', 'local_saylorcode'), ['size' => 55]),
+            $mform->createElement('advcheckbox', 'tcpublic', get_string('tcpublic', 'local_saylorcode')),
+            $mform->createElement('text', 'tcweight', get_string('tcweight', 'local_saylorcode'), ['size' => 4]),
+        ];
+
+        $this->repeat_elements(
+            $cases,
+            max(1, (int) ($this->_customdata['casecount'] ?? 0)),
+            [
+                'tcname' => ['type' => PARAM_TEXT],
+                'tcstdin' => ['type' => PARAM_RAW],
+                'tcexpected' => ['type' => PARAM_RAW],
+                'tcfeedback' => ['type' => PARAM_TEXT],
+                'tcpublic' => ['type' => PARAM_BOOL, 'default' => 1],
+                'tcweight' => ['type' => PARAM_FLOAT, 'default' => 1],
+            ],
+            'testcaserepeats',
+            'testcaseadd',
+            2,
+            get_string('exerciseaddcases', 'local_saylorcode'),
+            true
         );
-        $mform->setType('hints', PARAM_RAW);
+
+        $mform->addElement('header', 'hintsheader', get_string('exercisehints', 'local_saylorcode'));
+        $mform->addElement('static', 'hintsintro', '', get_string('exercisehints_help', 'local_saylorcode'));
+
+        $this->repeat_elements(
+            [
+                $mform->createElement(
+                    'textarea',
+                    'hinttext',
+                    get_string('exercisehint', 'local_saylorcode'),
+                    ['rows' => 2, 'cols' => 60]
+                ),
+            ],
+            max(1, (int) ($this->_customdata['hintcount'] ?? 0)),
+            ['hinttext' => ['type' => PARAM_TEXT]],
+            'hintrepeats',
+            'hintadd',
+            2,
+            get_string('exerciseaddhints', 'local_saylorcode'),
+            true
+        );
 
         $this->add_action_buttons();
+    }
+
+    /**
+     * Turn the submitted rows into the stored test case JSON.
+     *
+     * Kept here beside the fields that produce it, and static so the page can
+     * call it without building a form.
+     *
+     * @param \stdClass $data Submitted form data.
+     * @return string JSON, or an empty string for no cases.
+     */
+    public static function rows_to_cases($data): string {
+        $expected = (array) ($data->tcexpected ?? []);
+        $cases = [];
+
+        foreach ($expected as $i => $value) {
+            $name = trim((string) ($data->tcname[$i] ?? ''));
+            $value = (string) $value;
+
+            // A row with neither a name nor an expected value is the blank one
+            // an author leaves at the bottom, not a case.
+            if ($name === '' && trim($value) === '') {
+                continue;
+            }
+
+            $cases[] = [
+                'id' => 'T' . (count($cases) + 1),
+                'name' => $name !== '' ? $name : get_string('exercisecaseunnamed', 'local_saylorcode', count($cases) + 1),
+                'stdin' => (string) ($data->tcstdin[$i] ?? ''),
+                'expected' => $value,
+                'feedback' => trim((string) ($data->tcfeedback[$i] ?? '')),
+                'ispublic' => !empty($data->tcpublic[$i]),
+                'weight' => (float) ($data->tcweight[$i] ?? 1),
+            ];
+        }
+
+        return $cases ? json_encode($cases) : '';
+    }
+
+    /**
+     * Turn the submitted rows into the stored hint JSON.
+     *
+     * @param \stdClass $data Submitted form data.
+     * @return string JSON, or an empty string for no hints.
+     */
+    public static function rows_to_hints($data): string {
+        $hints = [];
+
+        foreach ((array) ($data->hinttext ?? []) as $text) {
+            $text = trim((string) $text);
+
+            if ($text === '') {
+                continue;
+            }
+
+            $hints[] = ['text' => $text];
+        }
+
+        return $hints ? json_encode($hints) : '';
     }
 
     /**
@@ -141,17 +244,22 @@ class exercise_form extends moodleform {
             $errors['stableid'] = get_string('stableidinvalid', 'local_saylorcode');
         }
 
-        // Malformed JSON here would reach a student as an exercise with no
-        // tests, so it is refused at the point somebody can still fix it.
-        foreach (['testcases' => 'testcases', 'hints' => 'hints'] as $field => $key) {
-            $raw = trim((string) ($data[$field] ?? ''));
+        // A row is only meaningful if it says what it expects, and a weight of
+        // zero silently removes a case from the score.
+        foreach ((array) ($data['tcexpected'] ?? []) as $i => $expected) {
+            $named = trim((string) ($data['tcname'][$i] ?? '')) !== '';
+            $hasexpected = trim((string) $expected) !== '';
 
-            if ($raw === '') {
+            if (!$named && !$hasexpected) {
                 continue;
             }
 
-            if (!is_array(json_decode($raw, true))) {
-                $errors[$field] = get_string('exercisejsoninvalid', 'local_saylorcode');
+            if (!$hasexpected) {
+                $errors['tcexpected[' . $i . ']'] = get_string('exercisecaseexpected', 'local_saylorcode');
+            }
+
+            if ((float) ($data['tcweight'][$i] ?? 1) <= 0) {
+                $errors['tcweight[' . $i . ']'] = get_string('exercisecaseweight', 'local_saylorcode');
             }
         }
 
