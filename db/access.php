@@ -27,6 +27,15 @@ defined('MOODLE_INTERNAL') || die();
 $capabilities = [
 
     // View the central exercise library.
+    'local/saylorcode:publishexercise' => [
+        'riskbitmask' => RISK_XSS,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
     'local/saylorcode:viewlibrary' => [
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,
