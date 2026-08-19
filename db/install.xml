@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/saylorcode/db" VERSION="20260819" COMMENT="Exercise library for Saylor Code Studio."
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_saylorcode_exercises" COMMENT="One exercise, identified by its stable id for the life of the course.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="stableid" TYPE="char" LENGTH="32" NOTNULL="true" SEQUENCE="false" COMMENT="The reference authors and activities use, for example CS101-U01-E01."/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="summary" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="profileid" TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="java17-console" SEQUENCE="false"/>
+        <FIELD NAME="currentversion" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The highest published version, or zero while the exercise has only drafts."/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="stableid" UNIQUE="true" FIELDS="stableid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_saylorcode_versions" COMMENT="An immutable published revision of an exercise, plus the working draft.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="exerciseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="version" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Sequential from one. Zero is the working draft, which is the only mutable row."/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="draft" SEQUENCE="false" COMMENT="draft or published."/>
+        <FIELD NAME="profileid" TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="java17-console" SEQUENCE="false" COMMENT="The runtime this version was published under, so a pinned activity keeps it."/>
+        <FIELD NAME="entryfilename" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="Main.java" SEQUENCE="false"/>
+        <FIELD NAME="startercode" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="referencesolution" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="testcases" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON array, the same shape the activity stores."/>
+        <FIELD NAME="hints" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON array of progressive hints."/>
+        <FIELD NAME="changenote" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Why this version was published."/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="exerciseid" TYPE="foreign" FIELDS="exerciseid" REFTABLE="local_saylorcode_exercises" REFFIELDS="id"/>
+        <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="exerciseid-version" UNIQUE="true" FIELDS="exerciseid, version"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

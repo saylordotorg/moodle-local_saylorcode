@@ -31,6 +31,15 @@ if ($hassiteconfig) {
     );
     $ADMIN->add('localplugins', $settings);
 
+    // The library is a page of its own rather than a setting, and carries its
+    // own capability so it can be offered to people who are not site admins.
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'localsaylorcodelibrary',
+        get_string('library', 'local_saylorcode'),
+        new moodle_url('/local/saylorcode/library.php'),
+        'local/saylorcode:viewlibrary'
+    ));
+
     // Execution backend.
     $settings->add(new admin_setting_heading(
         'local_saylorcode/runnerheading',
