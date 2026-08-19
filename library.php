@@ -136,7 +136,7 @@ if ($action === 'edit' || $action === 'add') {
             $values['tcstdin[' . $i . ']'] = (string) ($case['stdin'] ?? '');
             $values['tcexpected[' . $i . ']'] = (string) ($case['expected'] ?? '');
             $values['tcfeedback[' . $i . ']'] = (string) ($case['feedback'] ?? '');
-            $values['tcpublic[' . $i . ']'] = !empty($case['ispublic']) ? 1 : 0;
+            $values['tcpublic[' . $i . ']'] = exercise_form::case_is_public($case) ? 1 : 0;
             $values['tcweight[' . $i . ']'] = (float) ($case['weight'] ?? 1);
         }
 

@@ -131,10 +131,16 @@ class exercise_form extends moodleform {
             $cases,
             max(1, (int) ($this->_customdata['casecount'] ?? 0)),
             [
-                'tcname' => ['type' => PARAM_TEXT],
+                // Names and feedback describe code, so they routinely contain
+                // things shaped like tags: List<String>, Map<K, V>, a < b.
+                // PARAM_TEXT strips those silently, turning "Returns
+                // List<String>" into "Returns List" on save. Everything that
+                // renders these escapes them -- the template through {{ }} and
+                // the workspace through textContent -- so raw is safe here.
+                'tcname' => ['type' => PARAM_RAW],
                 'tcstdin' => ['type' => PARAM_RAW],
                 'tcexpected' => ['type' => PARAM_RAW],
-                'tcfeedback' => ['type' => PARAM_TEXT],
+                'tcfeedback' => ['type' => PARAM_RAW],
                 'tcpublic' => ['type' => PARAM_BOOL, 'default' => 1],
                 'tcweight' => ['type' => PARAM_FLOAT, 'default' => 1],
             ],
@@ -158,7 +164,9 @@ class exercise_form extends moodleform {
                 ),
             ],
             max(1, (int) ($this->_customdata['hintcount'] ?? 0)),
-            ['hinttext' => ['type' => PARAM_TEXT]],
+            // As with case names: a hint that says "use List<String> here" must
+            // survive being saved. Hints are escaped wherever they are shown.
+            ['hinttext' => ['type' => PARAM_RAW]],
             'hintrepeats',
             'hintadd',
             2,
@@ -204,6 +212,23 @@ class exercise_form extends moodleform {
         }
 
         return $cases ? json_encode($cases) : '';
+    }
+
+    /**
+     * Whether a stored case should be shown to students.
+     *
+     * Cases written before the visibility flag existed carry no key at all.
+     * Absent has to read as public, because that is what a new row and the
+     * runner both default to; reading it as hidden would take the case's name,
+     * its output comparison and its feedback away from the student the next
+     * time anyone saved the exercise, and nothing would report it. An explicit
+     * false still means hidden.
+     *
+     * @param array $case One stored case.
+     * @return bool
+     */
+    public static function case_is_public(array $case): bool {
+        return array_key_exists('ispublic', $case) ? !empty($case['ispublic']) : true;
     }
 
     /**
