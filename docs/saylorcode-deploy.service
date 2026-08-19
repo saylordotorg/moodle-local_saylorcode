@@ -1,0 +1,10 @@
+[Unit]
+Description=Deploy Saylor Code Studio plugins to dev from GitHub main
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/saylorcode-deploy.sh
+# The Moodle upgrade can take a little while on a cold cache.
+TimeoutStartSec=600
