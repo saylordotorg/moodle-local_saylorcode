@@ -4,7 +4,7 @@
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
   <TABLES>
-    <TABLE NAME="saylorcode_exercises" COMMENT="One exercise, identified by its stable id for the life of the course.">
+    <TABLE NAME="local_saylorcode_exercises" COMMENT="One exercise, identified by its stable id for the life of the course.">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="stableid" TYPE="char" LENGTH="32" NOTNULL="true" SEQUENCE="false" COMMENT="The reference authors and activities use, for example CS101-U01-E01."/>
@@ -25,12 +25,13 @@
       </INDEXES>
     </TABLE>
 
-    <TABLE NAME="saylorcode_exercise_versions" COMMENT="An immutable published revision of an exercise, plus the working draft.">
+    <TABLE NAME="local_saylorcode_versions" COMMENT="An immutable published revision of an exercise, plus the working draft.">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="exerciseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="version" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Sequential from one. Zero is the working draft, which is the only mutable row."/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="draft" SEQUENCE="false" COMMENT="draft or published."/>
+        <FIELD NAME="profileid" TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="java17-console" SEQUENCE="false" COMMENT="The runtime this version was published under, so a pinned activity keeps it."/>
         <FIELD NAME="entryfilename" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="Main.java" SEQUENCE="false"/>
         <FIELD NAME="startercode" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="referencesolution" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
@@ -43,7 +44,7 @@
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-        <KEY NAME="exerciseid" TYPE="foreign" FIELDS="exerciseid" REFTABLE="saylorcode_exercises" REFFIELDS="id"/>
+        <KEY NAME="exerciseid" TYPE="foreign" FIELDS="exerciseid" REFTABLE="local_saylorcode_exercises" REFFIELDS="id"/>
         <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>

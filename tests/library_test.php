@@ -263,6 +263,55 @@ final class library_test extends \advanced_testcase {
     }
 
     /**
+     * A pinned policy with no version chosen is a broken pin, not the latest.
+     *
+     * This is the likeliest way to reach a broken pin by accident: an activity
+     * saved with the policy set before anybody picked a version. Falling
+     * through to the latest is exactly the silent switch the pin exists to
+     * prevent.
+     */
+    public function test_a_pin_with_no_version_chosen_is_broken(): void {
+        $exercise = $this->repository->create('CS101-U01-E01', 'Doubling', $this->content('published'));
+        $this->repository->publish($exercise, 'First');
+
+        $resolved = (new exercise_resolver())->resolve($this->holder([
+            'versionpolicy' => exercise_resolver::POLICY_PINNED,
+            'pinnedversion' => 0,
+        ]));
+
+        $this->assertTrue($resolved->is_broken_pin());
+        $this->assertSame('the activity own starter', $resolved->get_starter_code());
+    }
+
+    /**
+     * A reference is stored in one spelling however it was typed.
+     *
+     * On a case sensitive database a lowercase row would never be found by the
+     * uppercase reference an activity carries, and the activity would quietly
+     * use its own content instead.
+     */
+    public function test_references_are_stored_canonically(): void {
+        $exercise = $this->repository->create('cs101-u01-e01', 'Doubling', $this->content());
+
+        $this->assertSame('CS101-U01-E01', $exercise->stableid);
+        $this->assertNotNull($this->repository->find('CS101-U01-E01'));
+        $this->assertNotNull($this->repository->find('cs101-u01-e01'));
+    }
+
+    /**
+     * A published version remembers the runtime it was published under.
+     *
+     * Otherwise an activity pinned to an old version would run its code on
+     * whatever language the exercise was later switched to.
+     */
+    public function test_a_version_keeps_its_runtime(): void {
+        $exercise = $this->repository->create('CS101-U01-E01', 'Doubling', $this->content());
+        $published = $this->repository->publish($exercise, 'First');
+
+        $this->assertSame($exercise->profileid, $published->profileid);
+    }
+
+    /**
      * The history lists published versions, newest first.
      */
     public function test_history_lists_published_versions_newest_first(): void {

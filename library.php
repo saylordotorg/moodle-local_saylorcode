@@ -49,7 +49,7 @@ if ($action === 'publish') {
     require_sesskey();
     require_capability('local/saylorcode:publishexercise', $context);
 
-    $exercise = $DB->get_record('saylorcode_exercises', ['id' => $id], '*', MUST_EXIST);
+    $exercise = $DB->get_record('local_saylorcode_exercises', ['id' => $id], '*', MUST_EXIST);
     $note = optional_param('changenote', '', PARAM_TEXT);
 
     try {
@@ -68,7 +68,7 @@ if ($action === 'publish') {
 if ($action === 'edit' || $action === 'add') {
     require_capability('local/saylorcode:publishexercise', $context);
 
-    $exercise = $id ? $DB->get_record('saylorcode_exercises', ['id' => $id], '*', MUST_EXIST) : null;
+    $exercise = $id ? $DB->get_record('local_saylorcode_exercises', ['id' => $id], '*', MUST_EXIST) : null;
 
     $form = new exercise_form(
         new moodle_url($pageurl, ['action' => $action, 'id' => $id]),
@@ -97,7 +97,7 @@ if ($action === 'edit' || $action === 'add') {
             $exercise->summary = $data->summary;
             $exercise->profileid = $data->profileid;
             $exercise->timemodified = time();
-            $DB->update_record('saylorcode_exercises', $exercise);
+            $DB->update_record('local_saylorcode_exercises', $exercise);
             $repository->write_draft($exercise, $fields);
         }
 
@@ -133,7 +133,7 @@ if ($action === 'edit' || $action === 'add') {
     exit;
 }
 
-$exercises = $DB->get_records('saylorcode_exercises', null, 'stableid ASC');
+$exercises = $DB->get_records('local_saylorcode_exercises', null, 'stableid ASC');
 $canpublish = has_capability('local/saylorcode:publishexercise', $context);
 
 echo $OUTPUT->header();

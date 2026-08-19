@@ -56,9 +56,36 @@ class exercise_repository {
     public function find(string $stableid): ?stdClass {
         global $DB;
 
-        $record = $DB->get_record('saylorcode_exercises', ['stableid' => $stableid]);
+        $canonical = self::canonical($stableid);
+
+        if ($canonical === null) {
+            return null;
+        }
+
+        $record = $DB->get_record('local_saylorcode_exercises', ['stableid' => $canonical]);
 
         return $record ?: null;
+    }
+
+    /**
+     * A reference in the one form it is stored in.
+     *
+     * stable_id::is_valid() uppercases to judge a reference but hands back
+     * nothing, so a lowercase entry would be stored as typed and then missed by
+     * an uppercase lookup on a case sensitive database. Both writing and
+     * reading go through here so there is only ever one spelling.
+     *
+     * @param string $stableid The reference as supplied.
+     * @return string|null The canonical form, or null when it is not a reference at all.
+     */
+    protected static function canonical(string $stableid): ?string {
+        if (!stable_id::is_valid($stableid)) {
+            return null;
+        }
+
+        // Parsing throws on anything malformed, which is_valid() has already
+        // ruled out, and the object renders itself in the canonical form.
+        return (string) stable_id::parse($stableid);
     }
 
     /**
@@ -72,7 +99,9 @@ class exercise_repository {
     public function create(string $stableid, string $name, array $fields = []): stdClass {
         global $DB, $USER;
 
-        if (!stable_id::is_valid($stableid)) {
+        $stableid = self::canonical($stableid);
+
+        if ($stableid === null) {
             throw new moodle_exception('stableidinvalid', 'local_saylorcode');
         }
 
@@ -93,11 +122,11 @@ class exercise_repository {
             'usermodified' => (int) $USER->id,
         ];
 
-        $exercise->id = $DB->insert_record('saylorcode_exercises', $exercise);
+        $exercise->id = $DB->insert_record('local_saylorcode_exercises', $exercise);
 
         $this->write_draft($exercise, $fields);
 
-        return $DB->get_record('saylorcode_exercises', ['id' => $exercise->id], '*', MUST_EXIST);
+        return $DB->get_record('local_saylorcode_exercises', ['id' => $exercise->id], '*', MUST_EXIST);
     }
 
     /**
@@ -109,7 +138,7 @@ class exercise_repository {
     public function get_draft(stdClass $exercise): stdClass {
         global $DB, $USER;
 
-        $draft = $DB->get_record('saylorcode_exercise_versions', [
+        $draft = $DB->get_record('local_saylorcode_versions', [
             'exerciseid' => $exercise->id,
             'version' => self::DRAFT_VERSION,
         ]);
@@ -134,9 +163,9 @@ class exercise_repository {
             'usermodified' => (int) $USER->id,
         ];
 
-        $draft->id = $DB->insert_record('saylorcode_exercise_versions', $draft);
+        $draft->id = $DB->insert_record('local_saylorcode_versions', $draft);
 
-        return $DB->get_record('saylorcode_exercise_versions', ['id' => $draft->id], '*', MUST_EXIST);
+        return $DB->get_record('local_saylorcode_versions', ['id' => $draft->id], '*', MUST_EXIST);
     }
 
     /**
@@ -160,7 +189,7 @@ class exercise_repository {
         $draft->timemodified = time();
         $draft->usermodified = (int) $USER->id;
 
-        $DB->update_record('saylorcode_exercise_versions', $draft);
+        $DB->update_record('local_saylorcode_versions', $draft);
 
         return $draft;
     }
@@ -193,19 +222,23 @@ class exercise_repository {
         unset($version->id);
         $version->version = $next;
         $version->status = self::STATUS_PUBLISHED;
+        // Snapshotted with the content: an activity pinned to this version must
+        // keep running it under the runtime it was published against, not
+        // whatever the exercise is set to years later.
+        $version->profileid = $exercise->profileid;
         $version->changenote = \core_text::substr(trim($changenote), 0, 255);
         $version->timecreated = $now;
         $version->timemodified = $now;
         $version->usermodified = (int) $USER->id;
 
-        $version->id = $DB->insert_record('saylorcode_exercise_versions', $version);
+        $version->id = $DB->insert_record('local_saylorcode_versions', $version);
 
         $exercise->currentversion = $next;
         $exercise->timemodified = $now;
         $exercise->usermodified = (int) $USER->id;
-        $DB->update_record('saylorcode_exercises', $exercise);
+        $DB->update_record('local_saylorcode_exercises', $exercise);
 
-        return $DB->get_record('saylorcode_exercise_versions', ['id' => $version->id], '*', MUST_EXIST);
+        return $DB->get_record('local_saylorcode_versions', ['id' => $version->id], '*', MUST_EXIST);
     }
 
     /**
@@ -218,7 +251,7 @@ class exercise_repository {
     public function get_version(stdClass $exercise, int $version): ?stdClass {
         global $DB;
 
-        $record = $DB->get_record('saylorcode_exercise_versions', [
+        $record = $DB->get_record('local_saylorcode_versions', [
             'exerciseid' => $exercise->id,
             'version' => $version,
             'status' => self::STATUS_PUBLISHED,
@@ -251,7 +284,7 @@ class exercise_repository {
         global $DB;
 
         return $DB->get_records(
-            'saylorcode_exercise_versions',
+            'local_saylorcode_versions',
             ['exerciseid' => $exercise->id, 'status' => self::STATUS_PUBLISHED],
             'version DESC'
         );

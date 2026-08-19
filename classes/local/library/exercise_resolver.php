@@ -42,6 +42,9 @@ class exercise_resolver {
     /** @var string Stay on one version whatever the author does next. */
     public const POLICY_PINNED = 'pinned';
 
+    /** @var string A pin that names no version that exists. */
+    public const SOURCE_BROKEN_PIN = 'pinnedversionmissing';
+
     /** @var exercise_repository The library. */
     protected exercise_repository $repository;
 
@@ -79,8 +82,13 @@ class exercise_resolver {
         $policy = (string) ($holder->versionpolicy ?? self::POLICY_LATEST);
         $pinned = (int) ($holder->pinnedversion ?? 0);
 
-        if ($policy === self::POLICY_PINNED && $pinned > 0) {
-            $version = $this->repository->get_version($exercise, $pinned);
+        if ($policy === self::POLICY_PINNED) {
+            // Every pinned holder is answered here, including one saved with
+            // the policy set and no version chosen yet. Letting that fall
+            // through to the latest would be the silent content switch this
+            // branch exists to prevent, and it is the likeliest way to reach
+            // that state by accident.
+            $version = $pinned > 0 ? $this->repository->get_version($exercise, $pinned) : null;
 
             if ($version === null) {
                 // Pinned to something that is not there. Falling back to the
