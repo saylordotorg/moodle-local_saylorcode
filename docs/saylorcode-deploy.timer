@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub for Saylor Code Studio plugin updates
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=30s
+# A missed window while the box was down should still deploy on the way back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

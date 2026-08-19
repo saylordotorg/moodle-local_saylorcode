@@ -118,3 +118,41 @@ but not essential.
 
 One `t3.medium` runner is roughly $30 per month on-demand, plus EBS. Capacity
 should be re-derived from real load before launch, per specification section 19.
+
+## Automatic deployment to dev
+
+The dev server keeps itself up to date. `saylorcode-deploy.timer` runs every two
+minutes, checks each plugin checkout against its GitHub `main`, fast-forwards
+any that have moved, and runs the Moodle upgrade once for the batch.
+
+```bash
+systemctl status saylorcode-deploy.timer
+journalctl -u saylorcode-deploy.service -n 50
+systemctl start saylorcode-deploy.service   # deploy now rather than waiting
+```
+
+### Why it pulls rather than being pushed
+
+The obvious design is a GitHub Action that deploys on merge. That would mean
+granting GitHub Actions the ability to run commands inside the AWS account,
+through either a stored access key or an OIDC trust relationship.
+
+These repositories are public, so a pull needs **no credentials at all**. No
+secret is stored in GitHub, and nothing outside the host is granted access to
+the account. The cost is up to two minutes of latency and a deploy failure that
+shows in the journal rather than on the pull request, which is the right trade
+for a development server.
+
+If deploy status on the pull request becomes worth having, the Action can be
+added later without removing this; they are not exclusive.
+
+### What it will not do
+
+- **It will not touch a checkout parked on a feature branch.** Testing a branch
+  on dev is normal, and a deploy that silently yanked it back to `main` would be
+  worse than not deploying.
+- **It will not overwrite a diverged checkout.** Merges are fast-forward only;
+  anything else is logged as `REFUSED` and left alone, because a divergence
+  means someone is working in there.
+- **It will not run the upgrade when nothing changed**, so an idle server does
+  no database work.
