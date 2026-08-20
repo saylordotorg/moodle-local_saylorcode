@@ -140,7 +140,17 @@ class jobe_provider implements provider_interface {
 
         $started = microtime(true);
         $curl = $this->new_curl();
-        $response = $curl->get($this->baseurl . '/jobe/index.php/restapi/languages');
+
+        // With the same headers as an execution. A runner configured the way
+        // the provisioning documentation requires -- api_keys_required = TRUE,
+        // unauthenticated requests rejected -- answers an unauthenticated probe
+        // with a 401, so a perfectly healthy runner reported as unreachable
+        // while student code ran fine.
+        $response = $curl->get(
+            $this->baseurl . '/jobe/index.php/restapi/languages',
+            [],
+            ['CURLOPT_HTTPHEADER' => $this->headers()]
+        );
         $latency = microtime(true) - $started;
         $info = $curl->get_info();
         $status = (int) ($info['http_code'] ?? 0);

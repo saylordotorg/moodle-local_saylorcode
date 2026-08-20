@@ -15,18 +15,23 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for the Saylor Code Studio shared service layer.
+ * Callbacks for the Saylor Code Studio service layer.
  *
  * @package    local_saylorcode
  * @copyright  2026 Saylor Academy
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->component = 'local_saylorcode';
-$plugin->version   = 2026081903;
-$plugin->requires  = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 405];
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0 (Phase 1 vertical slice)';
+/**
+ * Report runner health on the site status report.
+ *
+ * Moodle discovers these by calling this function on every plugin that defines
+ * it, so the name is fixed by the core convention rather than chosen.
+ *
+ * @return array
+ */
+function local_saylorcode_status_checks(): array {
+    return [
+        new \local_saylorcode\check\runner(),
+    ];
+}

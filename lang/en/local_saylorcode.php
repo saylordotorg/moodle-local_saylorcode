@@ -24,6 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['check:runner'] = 'Saylor Code Studio runner';
+$string['check:runneraction'] = 'Runner settings';
+$string['check:runnerok'] = 'The runner answered in {$a->latency}s and offers {$a->profiles} language profiles.';
 $string['editdraft'] = 'Edit the draft';
 $string['exerciseactions'] = 'Actions';
 $string['exerciseadd'] = 'Add an exercise';

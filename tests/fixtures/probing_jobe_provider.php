@@ -14,19 +14,34 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace local_saylorcode;
+
+use local_saylorcode\local\runner\jobe_provider;
+
 /**
- * Version details for the Saylor Code Studio shared service layer.
+ * A provider whose transport is a recording stub.
  *
  * @package    local_saylorcode
  * @copyright  2026 Saylor Academy
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class probing_jobe_provider extends jobe_provider {
+    /** @var recording_curl The stub handed to the last request. */
+    public $lastcurl;
 
-defined('MOODLE_INTERNAL') || die();
+    /** @var int The status the stub should answer with. */
+    public $status = 200;
 
-$plugin->component = 'local_saylorcode';
-$plugin->version   = 2026081903;
-$plugin->requires  = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 405];
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0 (Phase 1 vertical slice)';
+    /**
+     * Hand out the recording stub instead of a real transport.
+     *
+     * @return \curl
+     */
+    protected function new_curl(): \curl {
+        $curl = new recording_curl();
+        $curl->status = $this->status;
+        $this->lastcurl = $curl;
+
+        return $curl;
+    }
+}
