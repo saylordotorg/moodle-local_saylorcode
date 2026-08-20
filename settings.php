@@ -126,6 +126,14 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    $settings->add(new admin_setting_configtext(
+        'local_saylorcode/maxconcurrentsite',
+        get_string('settings:maxconcurrentsite', 'local_saylorcode'),
+        get_string('settings:maxconcurrentsite_desc', 'local_saylorcode'),
+        0,
+        PARAM_INT
+    ));
+
     // Runtime profiles.
     $settings->add(new admin_setting_heading(
         'local_saylorcode/runtimesheading',
