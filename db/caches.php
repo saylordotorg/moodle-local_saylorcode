@@ -36,4 +36,20 @@ $definitions = [
         'staticacceleration' => true,
         'ttl' => 300,
     ],
+
+    // The site wide counter. Separate from the per user one because every
+    // request on the site writes this single key, which needs different
+    // handling: it locks on write, and static acceleration is off so a request
+    // cannot release against a copy it read before other requests moved it.
+    'executiongatesite' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => false,
+        'staticacceleration' => false,
+        // The older requirelockingwrite is deprecated in Moodle 4.5 and does
+        // nothing but emit a debugging notice. This one is enforced: writing
+        // without holding the lock raises a coding exception.
+        'requirelockingbeforewrite' => true,
+        'ttl' => 300,
+    ],
 ];
