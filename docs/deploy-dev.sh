@@ -21,11 +21,24 @@ OWNER=www-data
 STATEDIR=/var/lib/saylorcode
 MARKER="$STATEDIR/pending-upgrade"
 
+# Adding a plugin here is not enough on its own. This script updates checkouts
+# that already exist and skips anything without a .git directory, so a new entry
+# needs its checkout created once by hand:
+#
+#   sudo -u www-data git clone https://github.com/saylordotorg/<repo>.git \
+#       /var/www/html/moodle/<path>
+#   sudo touch /var/lib/saylorcode/pending-upgrade
+#
+# The marker matters. A fresh clone is already level with origin/main, so
+# nothing here sees it move, no upgrade runs, and the plugin's tables are never
+# installed -- it sits on disk looking deployed and does not work. Touching the
+# marker makes the next run perform the upgrade it would otherwise skip.
 PLUGINS=(
     "local/saylorcode"
     "mod/saylorcode"
     "filter/saylorcode"
     "lib/editor/tiny/plugins/saylorcode"
+    "question/type/saylorcode"
 )
 
 log() {
