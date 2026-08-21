@@ -10,6 +10,12 @@
 set -x
 exec > >(tee -a /var/log/jobe-setup.log) 2>&1
 
+# The log captures xtrace output, and the API key section below turns tracing
+# off around the secret, so nothing sensitive lands in it. Restricted anyway,
+# because a setup log is exactly where the next secret gets pasted by accident.
+touch /var/log/jobe-setup.log
+chmod 600 /var/log/jobe-setup.log
+
 echo "=== jobe setup started $(date -u) ==="
 
 export DEBIAN_FRONTEND=noninteractive
@@ -54,6 +60,12 @@ python3 ./install || /usr/bin/env python3 ./install
 # --- Require an API key -----------------------------------------------------
 # Generated on the instance so the secret never appears in EC2 user data, which
 # is readable through describe-instance-attribute.
+#
+# Tracing is suspended while the key is in play: set -x prints every command
+# after expansion, and this script's output is being logged, so leaving it on
+# would write the key into /var/log/jobe-setup.log — and from there into any
+# backup, AMI snapshot or log pipeline that touches the box.
+set +x
 API_KEY=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 echo "$API_KEY" > /opt/jobe-api-key
 chmod 600 /opt/jobe-api-key
@@ -66,7 +78,9 @@ if [ -f "$CONFIG" ]; then
     else
         echo "\$config['api_keys'] = array('$API_KEY');" >> "$CONFIG"
     fi
+    echo "api key installed into jobe config"
 fi
+set -x
 
 # --- Deny student processes any network -------------------------------------
 # Specification section 14.1 requires that student code cannot reach the
