@@ -102,17 +102,50 @@ added, upgraded or retired.
 
 ## Rotating the API key
 
+Current Jobe is CodeIgniter 4 and keeps its keys in `app/Config/Jobe.php`; older
+releases used `application/config/config.php`. Edit whichever the runner has, and
+verify the edit landed rather than trusting the `sed`/`perl` return code — a
+substitution that matches nothing exits zero, and a key left half-rotated makes
+every execution fail once Moodle is pointed at the new value.
+
 ```bash
 NEW=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 echo "$NEW" > /opt/jobe-api-key
-sed -i "s/^\$config\['api_keys'\].*/\$config['api_keys'] = array('$NEW');/" \
-  /var/www/html/jobe/application/config/config.php
+chmod 600 /opt/jobe-api-key
+
+CI4=/var/www/html/jobe/app/Config/Jobe.php
+CI3=/var/www/html/jobe/application/config/config.php
+
+if [ -f "$CI4" ]; then
+    KEY="$NEW" perl -0pi -e \
+      's/public array \$api_keys = \[.*?\];/public array \$api_keys = [\n        \x27$ENV{KEY}\x27 => 6000,\n    ];/s' "$CI4"
+    grep -q "'$NEW' => 6000" "$CI4" || { echo "rotation failed: key not installed in $CI4" >&2; exit 1; }
+    php -l "$CI4" >/dev/null || { echo "rotation failed: $CI4 no longer parses" >&2; exit 1; }
+else
+    sed -i "s/^\$config\['api_keys'\].*/\$config['api_keys'] = array('$NEW');/" "$CI3"
+    grep -q "'$NEW'" "$CI3" || { echo "rotation failed: key not installed in $CI3" >&2; exit 1; }
+fi
+
 systemctl restart apache2
 ```
 
-Then update the Moodle setting. Runs in flight during the change fail with
-`runner_unavailable`; student code is preserved, so a quiet window is preferable
-but not essential.
+Then update the Moodle setting (`local_saylorcode | jobeapikey`). Confirm the new
+key works before walking away — a keyless POST must be refused and a keyed one
+accepted:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"run_spec":{"language_id":"java","sourcecode":"x"}}' \
+  http://localhost/jobe/index.php/restapi/runs   # expect 403
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  -H "X-API-KEY: $NEW" -H 'Content-Type: application/json' \
+  -d '{"run_spec":{"language_id":"java","sourcecode":"x"}}' \
+  http://localhost/jobe/index.php/restapi/runs   # expect 200
+```
+
+Runs in flight during the change fail with `runner_unavailable`; student code is
+preserved, so a quiet window is preferable but not essential.
 
 ## Current estimate
 
