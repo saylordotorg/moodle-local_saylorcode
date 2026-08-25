@@ -26,6 +26,7 @@ require(__DIR__ . '/../../config.php');
 
 use local_saylorcode\form\exercise_form;
 use local_saylorcode\local\library\exercise_repository;
+use local_saylorcode\local\library\solution_validator;
 
 $action = optional_param('action', '', PARAM_ALPHA);
 $id = optional_param('id', 0, PARAM_INT);
@@ -52,17 +53,56 @@ if ($action === 'publish') {
     $exercise = $DB->get_record('local_saylorcode_exercises', ['id' => $id], '*', MUST_EXIST);
     $note = optional_param('changenote', '', PARAM_TEXT);
 
+    // Check the reference solution against the draft's own tests before the
+    // version is frozen. A published version is immutable and graded against for
+    // as long as anything pins it, so this is the last moment to catch an
+    // exercise whose expected values are wrong. The check warns rather than
+    // blocks: a runner outage must not stop an author publishing, and an author
+    // may knowingly publish an exercise the runner cannot judge (no solution
+    // yet, a language the check does not model). What must not happen is
+    // publishing a confirmed-wrong exercise silently.
+    $report = (new solution_validator())->validate($repository->get_draft($exercise), $exercise->profileid);
+
     try {
         $version = $repository->publish($exercise, $note);
+    } catch (moodle_exception $e) {
+        redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_ERROR);
+    }
+
+    if ($report['valid']) {
         redirect(
             $pageurl,
             get_string('exercisepublished', 'local_saylorcode', $version->version),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );
-    } catch (moodle_exception $e) {
-        redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_ERROR);
     }
+
+    if ($report['validatable']) {
+        // Ran the tests and the reference did not pass them all. This is the
+        // case worth shouting about: the exercise is confirmed wrong.
+        redirect(
+            $pageurl,
+            get_string('publishedbutfailed', 'local_saylorcode', (object) [
+                'version' => $version->version,
+                'failed' => implode(', ', array_map('format_string', $report['failed'])),
+            ]),
+            null,
+            \core\output\notification::NOTIFY_WARNING
+        );
+    }
+
+    // Could not judge it: no solution, no cases, or the runner was down.
+    // Published, but say plainly that its correctness is unconfirmed.
+    redirect(
+        $pageurl,
+        get_string('publishedbutunchecked', 'local_saylorcode', (object) [
+            'version' => $version->version,
+            'reason' => get_string($report['reason'], 'local_saylorcode'),
+        ]),
+        null,
+        \core\output\notification::NOTIFY_WARNING
+    );
 }
 
 if ($action === 'edit' || $action === 'add') {
