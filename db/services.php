@@ -15,7 +15,12 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for the Saylor Code Studio shared service layer.
+ * Web service definitions for local_saylorcode.
+ *
+ * Declared ajax => true so the library authoring form can call it from the
+ * page, and deliberately not added to any published service: it assumes a
+ * logged in author in the system context and is not meant for an external
+ * token.
  *
  * @package    local_saylorcode
  * @copyright  2026 Saylor Academy
@@ -24,9 +29,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'local_saylorcode';
-$plugin->version   = 2026082501;
-$plugin->requires  = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 405];
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0 (Phase 1 vertical slice)';
+$functions = [
+
+    'local_saylorcode_validate_exercise' => [
+        'classname' => 'local_saylorcode\external\validate_exercise',
+        'description' => 'Run a library exercise\'s reference solution against its test cases.',
+        'type' => 'read',
+        'ajax' => true,
+        'capabilities' => 'local/saylorcode:publishexercise',
+    ],
+];

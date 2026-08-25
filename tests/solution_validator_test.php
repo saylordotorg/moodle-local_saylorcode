@@ -71,6 +71,15 @@ final class solution_validator_test extends \advanced_testcase {
         $this->assertSame('validatepassed', $report['reason']);
         $this->assertSame([], $report['failed']);
         $this->assertSame(2, $provider->calls);
+
+        // Each result carries the diff material the author's Validate button
+        // shows. The actual is normalised comparison input, so the raw runner
+        // output is preserved here rather than trimmed.
+        $this->assertCount(2, $report['results']);
+        $this->assertSame('greets', $report['results'][0]['name']);
+        $this->assertTrue($report['results'][0]['passed']);
+        $this->assertSame('Hello', $report['results'][0]['expected']);
+        $this->assertSame("Hello  \n", $report['results'][0]['actual']);
     }
 
     /**

@@ -174,6 +174,33 @@ class exercise_form extends moodleform {
             true
         );
 
+        // Validate. A button rather than a check on save, so an author can
+        // iterate on a case and see the answer at once instead of finding out
+        // at publish that the reference never passed. The activity form carries
+        // the identical control against its own service.
+        $mform->addElement(
+            'static',
+            'validatecontrol',
+            get_string('validate', 'local_saylorcode'),
+            \html_writer::div(
+                \html_writer::tag(
+                    'button',
+                    get_string('validaterun', 'local_saylorcode'),
+                    [
+                        'type' => 'button',
+                        'class' => 'btn btn-secondary',
+                        'data-action' => 'saylorcode-validate',
+                    ]
+                ) .
+                \html_writer::div('', 'saylorcode-validate-result mt-2', ['data-region' => 'validate-result']),
+                'saylorcode-validate'
+            )
+        );
+        $mform->addHelpButton('validatecontrol', 'validate', 'local_saylorcode');
+
+        global $PAGE;
+        $PAGE->requires->js_call_amd('local_saylorcode/authoring', 'init');
+
         $this->add_action_buttons();
     }
 
