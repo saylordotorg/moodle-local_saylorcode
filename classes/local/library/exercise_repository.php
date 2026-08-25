@@ -202,12 +202,18 @@ class exercise_repository {
      *
      * @param stdClass $exercise The exercise.
      * @param string $changenote Why this version exists.
+     * @param stdClass|null $draft The exact draft row to publish. Pass the row a
+     *                            caller has already read and acted on -- for
+     *                            example the one it just validated -- so a save
+     *                            from another author between that read and this
+     *                            call cannot freeze content that was never
+     *                            checked. Defaults to the current draft.
      * @return stdClass The published version.
      */
-    public function publish(stdClass $exercise, string $changenote = ''): stdClass {
+    public function publish(stdClass $exercise, string $changenote = '', ?stdClass $draft = null): stdClass {
         global $DB, $USER;
 
-        $draft = $this->get_draft($exercise);
+        $draft = $draft ?? $this->get_draft($exercise);
 
         // Publishing an exercise nobody can attempt would put a broken thing in
         // front of a student, and the library exists to stop exactly that.

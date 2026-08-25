@@ -26,6 +26,7 @@ require(__DIR__ . '/../../config.php');
 
 use local_saylorcode\form\exercise_form;
 use local_saylorcode\local\library\exercise_repository;
+use local_saylorcode\local\library\solution_validator;
 
 $action = optional_param('action', '', PARAM_ALPHA);
 $id = optional_param('id', 0, PARAM_INT);
@@ -52,17 +53,56 @@ if ($action === 'publish') {
     $exercise = $DB->get_record('local_saylorcode_exercises', ['id' => $id], '*', MUST_EXIST);
     $note = optional_param('changenote', '', PARAM_TEXT);
 
+    // Check the reference solution against the draft's own tests before the
+    // version is frozen. A published version is immutable and graded against for
+    // as long as anything pins it, so this is the last moment to catch an
+    // exercise whose expected values are wrong. The check warns rather than
+    // blocks: a runner outage must not stop an author publishing, and an author
+    // may knowingly publish an exercise the runner cannot judge (no solution
+    // yet, a language the check does not model). What must not happen is
+    // publishing a confirmed-wrong exercise silently.
+    //
+    // The draft is read once and both validated and published, so a save from
+    // another author between the two steps cannot freeze content that was never
+    // checked.
+    $draft = $repository->get_draft($exercise);
+    $report = (new solution_validator())->validate($draft, $exercise->profileid);
+
     try {
-        $version = $repository->publish($exercise, $note);
+        $version = $repository->publish($exercise, $note, $draft);
+    } catch (moodle_exception $e) {
+        redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_ERROR);
+    }
+
+    if ($report['valid']) {
         redirect(
             $pageurl,
             get_string('exercisepublished', 'local_saylorcode', $version->version),
             null,
             \core\output\notification::NOTIFY_SUCCESS
         );
-    } catch (moodle_exception $e) {
-        redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_ERROR);
     }
+
+    // Published, but not confirmed correct. One warning carries the reason
+    // whatever it was -- failing tests, a compile error, no solution to run, or
+    // a runner that could not be reached -- and names the failing cases when
+    // there are any. A blank "did not pass:" is worse than saying what happened.
+    $detail = get_string($report['reason'], 'local_saylorcode');
+    if (!empty($report['failed'])) {
+        $detail .= get_string('publishfaileddetail', 'local_saylorcode', [
+            'cases' => implode(', ', array_map('format_string', $report['failed'])),
+        ]);
+    }
+
+    redirect(
+        $pageurl,
+        get_string('publishedwithwarning', 'local_saylorcode', (object) [
+            'version' => $version->version,
+            'detail' => $detail,
+        ]),
+        null,
+        \core\output\notification::NOTIFY_WARNING
+    );
 }
 
 if ($action === 'edit' || $action === 'add') {
