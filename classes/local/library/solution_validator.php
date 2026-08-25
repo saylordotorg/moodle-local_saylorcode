@@ -16,6 +16,7 @@
 
 namespace local_saylorcode\local\library;
 
+use local_saylorcode\local\runner\execution_gate;
 use local_saylorcode\local\runner\execution_request;
 use local_saylorcode\local\runner\execution_state;
 use local_saylorcode\local\runner\jobe_provider;
@@ -84,6 +85,52 @@ class solution_validator {
             return $this->outcome(false, false, 'validatenocases');
         }
 
+        // Only entries that are actually runnable count. A decoded array that
+        // is non-empty but holds nothing usable -- [null], or objects with no
+        // expected value -- would otherwise run zero cases and, with an empty
+        // failed list, read as a pass. Drafts can be written straight through
+        // the repository as well as the form, so this cannot assume the form's
+        // shaping has happened.
+        $runnable = [];
+        foreach ($cases as $index => $case) {
+            if (is_array($case) && array_key_exists('expected', $case)) {
+                $runnable[$index] = $case;
+            }
+        }
+
+        if ($runnable === []) {
+            return $this->outcome(false, false, 'validatenocases');
+        }
+
+        // Author validation is real runner work, so it goes through the same
+        // admission gate as a student run. Without this a burst of publishing
+        // during a busy period would push the site past its configured runner
+        // ceiling, which is the exact thing the gate exists to hold. Denied
+        // admission is reported as unchecked rather than as a failure.
+        global $USER;
+        $gate = new execution_gate((int) $USER->id);
+        $lease = $gate->acquire();
+
+        if ($lease === null) {
+            return $this->outcome(false, false, 'validaterunnerdown');
+        }
+
+        try {
+            return $this->run($runnable, $draft, $profileid);
+        } finally {
+            $gate->release($lease);
+        }
+    }
+
+    /**
+     * Execute the runnable cases and judge the reference against them.
+     *
+     * @param array $cases Runnable cases, keyed by their original index.
+     * @param stdClass $draft The version being validated.
+     * @param string $profileid The runtime to judge under.
+     * @return array The report, shaped as validate() documents.
+     */
+    protected function run(array $cases, stdClass $draft, string $profileid): array {
         $entryfilename = trim((string) ($draft->entryfilename ?? '')) ?: 'Main.java';
         $files = [$entryfilename => (string) $draft->referencesolution];
 
@@ -91,10 +138,6 @@ class solution_validator {
         $failed = [];
 
         foreach ($cases as $index => $case) {
-            if (!is_array($case)) {
-                continue;
-            }
-
             $name = trim((string) ($case['name'] ?? '')) !== ''
                 ? (string) $case['name']
                 : get_string('exercisecaseunnamed', 'local_saylorcode', $index + 1);

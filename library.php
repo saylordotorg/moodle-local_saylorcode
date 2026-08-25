@@ -61,10 +61,15 @@ if ($action === 'publish') {
     // may knowingly publish an exercise the runner cannot judge (no solution
     // yet, a language the check does not model). What must not happen is
     // publishing a confirmed-wrong exercise silently.
-    $report = (new solution_validator())->validate($repository->get_draft($exercise), $exercise->profileid);
+    //
+    // The draft is read once and both validated and published, so a save from
+    // another author between the two steps cannot freeze content that was never
+    // checked.
+    $draft = $repository->get_draft($exercise);
+    $report = (new solution_validator())->validate($draft, $exercise->profileid);
 
     try {
-        $version = $repository->publish($exercise, $note);
+        $version = $repository->publish($exercise, $note, $draft);
     } catch (moodle_exception $e) {
         redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_ERROR);
     }
@@ -78,27 +83,22 @@ if ($action === 'publish') {
         );
     }
 
-    if ($report['validatable']) {
-        // Ran the tests and the reference did not pass them all. This is the
-        // case worth shouting about: the exercise is confirmed wrong.
-        redirect(
-            $pageurl,
-            get_string('publishedbutfailed', 'local_saylorcode', (object) [
-                'version' => $version->version,
-                'failed' => implode(', ', array_map('format_string', $report['failed'])),
-            ]),
-            null,
-            \core\output\notification::NOTIFY_WARNING
-        );
+    // Published, but not confirmed correct. One warning carries the reason
+    // whatever it was -- failing tests, a compile error, no solution to run, or
+    // a runner that could not be reached -- and names the failing cases when
+    // there are any. A blank "did not pass:" is worse than saying what happened.
+    $detail = get_string($report['reason'], 'local_saylorcode');
+    if (!empty($report['failed'])) {
+        $detail .= get_string('publishfaileddetail', 'local_saylorcode', [
+            'cases' => implode(', ', array_map('format_string', $report['failed'])),
+        ]);
     }
 
-    // Could not judge it: no solution, no cases, or the runner was down.
-    // Published, but say plainly that its correctness is unconfirmed.
     redirect(
         $pageurl,
-        get_string('publishedbutunchecked', 'local_saylorcode', (object) [
+        get_string('publishedwithwarning', 'local_saylorcode', (object) [
             'version' => $version->version,
-            'reason' => get_string($report['reason'], 'local_saylorcode'),
+            'detail' => $detail,
         ]),
         null,
         \core\output\notification::NOTIFY_WARNING

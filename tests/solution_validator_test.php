@@ -157,4 +157,28 @@ final class solution_validator_test extends \advanced_testcase {
         $this->assertSame('validatenocases', $report['reason']);
         $this->assertSame(0, $provider->calls);
     }
+
+    /**
+     * A draft whose JSON is nonempty but holds no runnable case is not a pass.
+     *
+     * Drafts can be written straight through the repository, not only the form,
+     * so migrated or hand-edited content like [null] or a case with no expected
+     * value must not run zero tests and read as valid.
+     */
+    public function test_nonempty_but_unrunnable_cases_are_not_validatable(): void {
+        $this->resetAfterTest();
+
+        foreach (['[null]', '[{"name":"no expected here"}]', '[1, 2, 3]'] as $json) {
+            $provider = new scripted_provider(['anything']);
+            $report = (new solution_validator($provider))->validate(
+                $this->draft(['testcases' => $json]),
+                'java17-console'
+            );
+
+            $this->assertFalse($report['valid'], "should not be valid: $json");
+            $this->assertFalse($report['validatable'], "should not be validatable: $json");
+            $this->assertSame('validatenocases', $report['reason'], "wrong reason for: $json");
+            $this->assertSame(0, $provider->calls, "should not have run for: $json");
+        }
+    }
 }
