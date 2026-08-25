@@ -99,6 +99,32 @@ final class validate_exercise_test extends \advanced_testcase {
     }
 
     /**
+     * A code-like case name survives the response cleaning intact.
+     *
+     * Names routinely contain angle brackets ("Returns List<String>"), which
+     * the form stores raw. PARAM_TEXT on the return would strip them; the
+     * client renders the name with textContent, so it is returned raw.
+     */
+    public function test_a_code_like_case_name_is_not_stripped(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        solution_validator::set_test_provider(new scripted_provider(['[1, 2]']));
+
+        $cases = json_encode([
+            ['id' => 'T1', 'name' => 'Returns List<String>', 'expected' => '[1, 2]', 'ispublic' => true, 'weight' => 1],
+        ]);
+
+        $result = validate_exercise::execute('java17-console', 'Main.java', 'public class Main {}', $cases);
+        $result = \core_external\external_api::clean_returnvalue(
+            validate_exercise::execute_returns(),
+            $result
+        );
+
+        $this->assertSame('Returns List<String>', $result['results'][0]['name']);
+    }
+
+    /**
      * An author without the publish capability may not run the check.
      */
     public function test_it_requires_the_publish_capability(): void {
