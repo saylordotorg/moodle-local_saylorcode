@@ -70,15 +70,56 @@ API_KEY=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 echo "$API_KEY" > /opt/jobe-api-key
 chmod 600 /opt/jobe-api-key
 
-CONFIG=/var/www/html/jobe/application/config/config.php
-if [ -f "$CONFIG" ]; then
-    sed -i "s/^\$config\['api_keys_required'\].*/\$config['api_keys_required'] = TRUE;/" "$CONFIG"
-    if grep -q "api_keys" "$CONFIG"; then
-        sed -i "s/^\$config\['api_keys'\].*/\$config['api_keys'] = array('$API_KEY');/" "$CONFIG"
+# Current Jobe is CodeIgniter 4 and configures keys in app/Config/Jobe.php;
+# older releases used application/config/config.php. Handle both, and fail
+# the build outright when neither matches: a runner that silently skips this
+# block accepts execution requests from anything that can reach it, and that
+# is exactly how the first runner shipped -- the CI3 sed found no file, the
+# condition guarded it into a no-op, and nothing was ever enforced.
+CI4_CONFIG=/var/www/html/jobe/app/Config/Jobe.php
+CI3_CONFIG=/var/www/html/jobe/application/config/config.php
+fail() {
+    echo "FATAL: $1" >&2
+    exit 1
+}
+
+if [ -f "$CI4_CONFIG" ]; then
+    # Each edit is verified rather than trusted. A perl s/// against a future
+    # checkout whose whitespace or syntax has drifted matches nothing and exits
+    # zero, so without checking the result the script would print success while
+    # leaving require_api_keys false -- an unauthenticated runner, which is the
+    # exact failure this whole block exists to prevent. set -e is not enough on
+    # its own, because a no-op substitution is not an error to it.
+    KEY="$API_KEY" perl -0pi -e \
+        's/public bool \$require_api_keys = (false|true);/public bool \$require_api_keys = true;/' \
+        "$CI4_CONFIG"
+    grep -q 'public bool \$require_api_keys = true;' "$CI4_CONFIG" \
+        || fail "could not enable require_api_keys in $CI4_CONFIG"
+
+    # The rate is per key per hour, enforced on restapi/runs only. Moodle
+    # already rate-limits per user and per site; this bound is the backstop
+    # for a leaked key, not the working limit.
+    KEY="$API_KEY" perl -0pi -e \
+        's/public array \$api_keys = \[.*?\];/public array \$api_keys = [\n        \x27$ENV{KEY}\x27 => 6000, \/\/ Saylor Code Studio Moodle. Managed via \/opt\/jobe-api-key.\n    ];/s' \
+        "$CI4_CONFIG"
+    grep -q "'$API_KEY' => 6000" "$CI4_CONFIG" \
+        || fail "could not install the API key in $CI4_CONFIG"
+
+    php -l "$CI4_CONFIG" > /dev/null \
+        || fail "edited $CI4_CONFIG no longer parses"
+
+    echo "api key installed into jobe config (CodeIgniter 4 layout)"
+elif [ -f "$CI3_CONFIG" ]; then
+    sed -i "s/^\$config\['api_keys_required'\].*/\$config['api_keys_required'] = TRUE;/" "$CI3_CONFIG"
+    if grep -q "api_keys" "$CI3_CONFIG"; then
+        sed -i "s/^\$config\['api_keys'\].*/\$config['api_keys'] = array('$API_KEY');/" "$CI3_CONFIG"
     else
-        echo "\$config['api_keys'] = array('$API_KEY');" >> "$CONFIG"
+        echo "\$config['api_keys'] = array('$API_KEY');" >> "$CI3_CONFIG"
     fi
-    echo "api key installed into jobe config"
+    echo "api key installed into jobe config (CodeIgniter 3 layout)"
+else
+    echo "FATAL: no known jobe config layout found; refusing to ship an unauthenticated runner" >&2
+    exit 1
 fi
 set -x
 
