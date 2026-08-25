@@ -43,6 +43,9 @@ use stdClass;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class solution_validator {
+    /** @var provider_interface|null A backend injected for testing, used when none is passed. */
+    protected static ?provider_interface $testprovider = null;
+
     /** @var provider_interface The execution backend. */
     protected provider_interface $provider;
 
@@ -52,7 +55,20 @@ class solution_validator {
      * @param provider_interface|null $provider Backend, defaulting to the configured one.
      */
     public function __construct(?provider_interface $provider = null) {
-        $this->provider = $provider ?? jobe_provider::create_from_config();
+        $this->provider = $provider ?? self::$testprovider ?? jobe_provider::create_from_config();
+    }
+
+    /**
+     * Inject a backend for code that constructs the validator itself.
+     *
+     * The web service builds its own validator, so a test driving the service
+     * has nowhere to pass a scripted provider. This lets it stage one. It is a
+     * test seam and nothing in production sets it.
+     *
+     * @param provider_interface|null $provider The backend, or null to clear it.
+     */
+    public static function set_test_provider(?provider_interface $provider): void {
+        self::$testprovider = $provider;
     }
 
     /**
@@ -70,8 +86,9 @@ class solution_validator {
      *     valid: bool Whether every case passed.
      *     validatable: bool Whether there was anything to judge.
      *     reason: string A language-string key describing the outcome.
-     *     results: array Per case: name, passed, ispublic.
+     *     results: array Per case: name, passed, ispublic, expected, actual, state.
      *     failed: string[] Names of the cases the reference did not satisfy.
+     *     compileroutput: string Compiler output, present only on a compile error.
      * }
      */
     public function validate(stdClass $draft, string $profileid): array {
@@ -159,10 +176,15 @@ class solution_validator {
                 return $this->outcome(false, false, 'validaterunnerdown');
             }
 
+            $export = $response->export_for_student();
             $state = $response->get_state();
 
             if ($state === execution_state::COMPILE_ERROR) {
-                return $this->outcome(false, true, 'validatecompileerror');
+                // Carry the compiler output so the author sees why, the same as
+                // the activity form's Validate button does.
+                $outcome = $this->outcome(false, true, 'validatecompileerror');
+                $outcome['compileroutput'] = (string) ($export['compileroutput'] ?? '');
+                return $outcome;
             }
 
             if (execution_state::is_platform_failure($state)) {
@@ -170,7 +192,7 @@ class solution_validator {
             }
 
             $expected = (string) ($case['expected'] ?? '');
-            $actual = (string) ($response->export_for_student()['stdout'] ?? '');
+            $actual = (string) ($export['stdout'] ?? '');
             $passed = $state === execution_state::COMPLETED && $this->output_matches($actual, $expected);
 
             if (!$passed) {
@@ -181,6 +203,12 @@ class solution_validator {
                 'name' => $name,
                 'passed' => $passed,
                 'ispublic' => !empty($case['ispublic']),
+                // The author owns this content, so showing them the diff on a
+                // failure is exactly what the button is for. This is never sent
+                // to a student: the publish gate and the report both drop it.
+                'expected' => $expected,
+                'actual' => $actual,
+                'state' => $state,
             ];
         }
 
@@ -192,6 +220,7 @@ class solution_validator {
             'reason' => $valid ? 'validatepassed' : 'validatefailed',
             'results' => $results,
             'failed' => $failed,
+            'compileroutput' => '',
         ];
     }
 
@@ -234,6 +263,7 @@ class solution_validator {
             'reason' => $reason,
             'results' => [],
             'failed' => [],
+            'compileroutput' => '',
         ];
     }
 }
