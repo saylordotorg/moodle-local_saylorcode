@@ -46,6 +46,7 @@ $string['exerciseidinvalid'] = '{$a} is not a valid exercise reference. The expe
 $string['exercisejsoninvalid'] = 'This must be a JSON array, or empty.';
 $string['exercisename'] = 'Name';
 $string['exercisenosampletests'] = 'This exercise has no public sample tests. Its hidden tests still run when a student submits.';
+$string['exercisenotests'] = 'This exercise has no automated tests.';
 $string['exercisenotpublished'] = 'Exercise {$a} is not published yet. The reference is valid, so this page will show the exercise once it has been authored and approved in the library.';
 $string['exercisepublished'] = 'Published as version {$a}.';
 $string['exercisesampletests'] = 'Sample tests';

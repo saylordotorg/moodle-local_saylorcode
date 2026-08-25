@@ -111,4 +111,29 @@ final class exercise_view_test extends \advanced_testcase {
         $this->assertCount(1, $samples);
         $this->assertSame('good', $samples[0]['name']);
     }
+
+    /**
+     * An exercise with a hidden case reports having hidden tests.
+     */
+    public function test_hidden_tests_are_detected(): void {
+        $resolved = $this->resolved([
+            ['name' => 'shown', 'expected' => 'ok', 'ispublic' => true],
+            ['name' => 'hidden', 'expected' => '42', 'ispublic' => false],
+        ]);
+
+        $this->assertTrue(exercise_view::has_hidden_tests($resolved));
+    }
+
+    /**
+     * A starter-only exercise with no tests reports no hidden tests.
+     *
+     * The distinction the page needs: this must not claim hidden tests run
+     * when there are none. An all-public set has none hidden either.
+     */
+    public function test_no_hidden_tests_when_there_are_none(): void {
+        $this->assertFalse(exercise_view::has_hidden_tests($this->resolved([])));
+        $this->assertFalse(exercise_view::has_hidden_tests($this->resolved([
+            ['name' => 'only public', 'expected' => 'ok', 'ispublic' => true],
+        ])));
+    }
 }

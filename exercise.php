@@ -108,8 +108,15 @@ if ($versionrow === null) {
 
 $resolved = new resolved_exercise($versionrow, $exercise, $version === 'latest' ? 'latest' : 'pinned');
 
-$profile = (new profile_manager())->get_profile($exercise->profileid);
-$runtimename = $profile ? $profile->get_display_name() : $exercise->profileid;
+// The language comes from the version, not the exercise. Publishing snapshots
+// the profile onto the version, so a pinned older version keeps the runtime it
+// was published against even after the exercise's profile is changed; reading
+// the exercise's current profile here would pair old code with a new language.
+$profileid = trim((string) ($versionrow->profileid ?? '')) !== ''
+    ? (string) $versionrow->profileid
+    : (string) $exercise->profileid;
+$profile = (new profile_manager())->get_profile($profileid);
+$runtimename = $profile ? $profile->get_display_name() : $profileid;
 
 // A read-only presentation, deliberately not a workspace. A page with no course
 // module has no attempt, so it can offer no save, run, completion or grade
@@ -146,7 +153,11 @@ echo $OUTPUT->heading(get_string('exercisesampletests', 'local_saylorcode'), 3);
 $samples = exercise_view::sample_tests($resolved);
 
 if (!$samples) {
-    echo $OUTPUT->notification(get_string('exercisenosampletests', 'local_saylorcode'), \core\output\notification::NOTIFY_INFO);
+    // Two different empties: an exercise with hidden cases but no public ones,
+    // and one with no automated tests at all (a starter-only exercise, which
+    // publishing permits). Only the first should say hidden tests will run.
+    $emptykey = exercise_view::has_hidden_tests($resolved) ? 'exercisenosampletests' : 'exercisenotests';
+    echo $OUTPUT->notification(get_string($emptykey, 'local_saylorcode'), \core\output\notification::NOTIFY_INFO);
 } else {
     $table = new html_table();
     $table->head = [

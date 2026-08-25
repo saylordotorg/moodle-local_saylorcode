@@ -62,4 +62,25 @@ class exercise_view {
 
         return $samples;
     }
+
+    /**
+     * Whether the exercise has any tests that are not public samples.
+     *
+     * The page uses this to tell two empties apart: an exercise with hidden
+     * cases but no public ones, where it is honest to say hidden tests still
+     * run, and an exercise with no automated tests at all, where saying so
+     * would be a lie. A malformed entry is not a test.
+     *
+     * @param resolved_exercise $resolved The exercise being shown.
+     * @return bool
+     */
+    public static function has_hidden_tests(resolved_exercise $resolved): bool {
+        foreach ($resolved->get_test_cases() as $case) {
+            if (is_array($case) && empty($case['ispublic'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
