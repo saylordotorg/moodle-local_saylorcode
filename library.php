@@ -26,10 +26,12 @@ require(__DIR__ . '/../../config.php');
 
 use local_saylorcode\form\exercise_form;
 use local_saylorcode\local\library\exercise_repository;
+use local_saylorcode\local\library\exercise_workflow;
 use local_saylorcode\local\library\solution_validator;
 
 $action = optional_param('action', '', PARAM_ALPHA);
 $id = optional_param('id', 0, PARAM_INT);
+$status = optional_param('status', '', PARAM_ALPHA);
 
 require_login();
 
@@ -45,6 +47,29 @@ $PAGE->set_title(get_string('library', 'local_saylorcode'));
 $PAGE->set_heading(get_string('library', 'local_saylorcode'));
 
 $repository = new exercise_repository();
+
+if ($action === 'status') {
+    require_sesskey();
+
+    $exercise = $DB->get_record('local_saylorcode_exercises', ['id' => $id], '*', MUST_EXIST);
+
+    try {
+        // The workflow checks the capability itself, because which one applies
+        // depends on where the exercise is going.
+        exercise_workflow::transition($exercise, $status);
+
+        redirect(
+            $pageurl,
+            get_string('statusmoved', 'local_saylorcode', get_string('status' . $status, 'local_saylorcode')),
+            null,
+            \core\output\notification::NOTIFY_SUCCESS
+        );
+    } catch (moodle_exception $e) {
+        // A refusal here is the checklist doing its job, so it is reported as
+        // something to act on rather than as a failure of the page.
+        redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_WARNING);
+    }
+}
 
 if ($action === 'publish') {
     require_sesskey();
@@ -210,6 +235,7 @@ if (!$exercises) {
         get_string('exercisename', 'local_saylorcode'),
         get_string('profileid', 'local_saylorcode'),
         get_string('exerciseversionshead', 'local_saylorcode'),
+        get_string('status', 'local_saylorcode'),
         get_string('exerciseactions', 'local_saylorcode'),
     ];
     $table->attributes['class'] = 'generaltable';
@@ -220,6 +246,19 @@ if (!$exercises) {
         $published = $version > 0
             ? get_string('exerciseversionn', 'local_saylorcode', $version)
             : html_writer::span(get_string('exerciseunpublished', 'local_saylorcode'), 'text-muted');
+
+        $current = exercise_workflow::status_of($exercise);
+        $badges = [
+            exercise_workflow::STATUS_DRAFT => 'badge badge-secondary bg-secondary text-white',
+            exercise_workflow::STATUS_INREVIEW => 'badge badge-info bg-info text-dark',
+            exercise_workflow::STATUS_READY => 'badge badge-success bg-success text-white',
+            exercise_workflow::STATUS_RETIRED => 'badge badge-warning bg-warning text-dark',
+            exercise_workflow::STATUS_ARCHIVED => 'badge badge-dark bg-dark text-white',
+        ];
+        $statuscell = html_writer::span(
+            get_string('status' . $current, 'local_saylorcode'),
+            $badges[$current] ?? 'badge badge-secondary bg-secondary text-white'
+        );
 
         $actions = [];
 
@@ -236,11 +275,31 @@ if (!$exercises) {
             );
         }
 
+        // Only the moves this exercise can actually make, and only for someone
+        // who holds the capability that move needs. A control that is going to
+        // refuse is worse than no control.
+        foreach (exercise_workflow::next_statuses($exercise) as $next) {
+            if (!has_capability(exercise_workflow::required_capability($next), $context)) {
+                continue;
+            }
+
+            $actions[] = html_writer::link(
+                new moodle_url($pageurl, [
+                    'action' => 'status',
+                    'id' => $exercise->id,
+                    'status' => $next,
+                    'sesskey' => sesskey(),
+                ]),
+                get_string('statusto', 'local_saylorcode', get_string('status' . $next, 'local_saylorcode'))
+            );
+        }
+
         $table->data[] = [
             $exercise->stableid,
             format_string($exercise->name),
             $exercise->profileid,
             $published,
+            $statuscell,
             implode(' &nbsp; ', $actions),
         ];
     }

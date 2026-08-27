@@ -12,6 +12,7 @@
         <FIELD NAME="summary" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="profileid" TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="java17-console" SEQUENCE="false"/>
         <FIELD NAME="currentversion" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The highest published version, or zero while the exercise has only drafts."/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="draft" SEQUENCE="false" COMMENT="Where the exercise stands in the review workflow: draft, inreview, ready, retired or archived. Governs whether it may be put to new use, separately from whether a version has been published."/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
