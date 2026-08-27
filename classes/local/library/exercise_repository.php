@@ -281,6 +281,37 @@ class exercise_repository {
     }
 
     /**
+     * The version a latest-following activity should serve.
+     *
+     * Not simply the newest published one. Specification section 10.9 says such
+     * an activity follows the latest *approved* version, and the difference
+     * matters: an author revising a Ready exercise publishes a new version to
+     * work on it, and that revision must not reach students until a reviewer
+     * has passed it. Serving the newest would make publishing itself the act
+     * that puts unreviewed content in front of a class.
+     *
+     * An exercise that has never been approved -- one written before the
+     * workflow existed, or still in draft -- falls back to the newest published
+     * version, which is what it was already being served.
+     *
+     * @param stdClass $exercise The exercise.
+     * @return stdClass|null
+     */
+    public function get_for_use(stdClass $exercise): ?stdClass {
+        $approved = (int) ($exercise->approvedversion ?? 0);
+
+        if ($approved > 0) {
+            $version = $this->get_version($exercise, $approved);
+
+            if ($version !== null) {
+                return $version;
+            }
+        }
+
+        return $this->get_latest($exercise);
+    }
+
+    /**
      * Every published version, newest first.
      *
      * @param stdClass $exercise The exercise.

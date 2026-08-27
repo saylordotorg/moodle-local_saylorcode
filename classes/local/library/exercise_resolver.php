@@ -101,7 +101,10 @@ class exercise_resolver {
             return new resolved_exercise($version, $exercise, 'pinned');
         }
 
-        $version = $this->repository->get_latest($exercise);
+        // The latest *approved* version, not merely the newest published one:
+        // a revision of a Ready exercise waits for a reviewer rather than
+        // reaching students the moment its author publishes it.
+        $version = $this->repository->get_for_use($exercise);
 
         if ($version === null) {
             // In the library but never published. A draft is not something a

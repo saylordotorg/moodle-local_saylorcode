@@ -91,18 +91,33 @@ class exercise_workflow {
     /**
      * The capability a transition requires.
      *
-     * Approving is the consequential one: it is what lets an exercise reach
-     * students, so the specification reserves it for the publish capability.
-     * Submitting for review is ordinary authoring. Retiring and archiving
-     * withdraw content, which is a publishing decision too.
+     * Each move maps to the capability the plugin already defines for that job,
+     * rather than lumping them together: publishcontent is described as the
+     * right to create a Ready version, and reviewcontent as the right to act on
+     * draft content, which is what sending work back is. Collapsing these onto
+     * publishexercise would both deny a designated approver their own action
+     * and let anyone who may cut an immutable version approve one for students.
      *
      * @param string $to The status being moved to.
      * @return string The capability required.
      */
     public static function required_capability(string $to): string {
-        return $to === self::STATUS_INREVIEW
-            ? 'local/saylorcode:managecontent'
-            : 'local/saylorcode:publishexercise';
+        switch ($to) {
+            case self::STATUS_INREVIEW:
+                // Submitting your own work is ordinary authoring.
+                return 'local/saylorcode:managecontent';
+
+            case self::STATUS_READY:
+                return 'local/saylorcode:publishcontent';
+
+            case self::STATUS_DRAFT:
+                // Only reachable as a reviewer's send-back.
+                return 'local/saylorcode:reviewcontent';
+
+            default:
+                // Retiring and archiving withdraw content from use.
+                return 'local/saylorcode:publishexercise';
+        }
     }
 
     /**
@@ -192,7 +207,44 @@ class exercise_workflow {
             }
         }
 
+        // Approving names the version that was approved. That is what a
+        // latest-following activity serves, so a later revision does not reach
+        // students until someone approves it in turn.
+        if ($to === self::STATUS_READY) {
+            $exercise->approvedversion = (int) $exercise->currentversion;
+        }
+
         $exercise->status = $to;
+        $exercise->timemodified = time();
+        $exercise->usermodified = (int) $USER->id;
+        $DB->update_record('local_saylorcode_exercises', $exercise);
+
+        return $exercise;
+    }
+
+    /**
+     * Record that a new version has been published.
+     *
+     * A Ready exercise goes back to In review, because the thing that was
+     * approved is no longer the newest thing there is. Without this an author
+     * could revise an approved exercise indefinitely and never be reviewed
+     * again, and Ready would stop meaning anything.
+     *
+     * The approved version pointer is left alone on purpose: students keep
+     * getting the reviewed content while the revision waits, rather than the
+     * exercise disappearing from under them.
+     *
+     * @param stdClass $exercise The exercise a version was just published for.
+     * @return stdClass The exercise, moved back to review where it had been approved.
+     */
+    public static function after_publish(stdClass $exercise): stdClass {
+        global $DB, $USER;
+
+        if (self::status_of($exercise) !== self::STATUS_READY) {
+            return $exercise;
+        }
+
+        $exercise->status = self::STATUS_INREVIEW;
         $exercise->timemodified = time();
         $exercise->usermodified = (int) $USER->id;
         $DB->update_record('local_saylorcode_exercises', $exercise);

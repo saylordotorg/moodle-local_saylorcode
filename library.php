@@ -99,6 +99,11 @@ if ($action === 'publish') {
         redirect($pageurl, $e->getMessage(), null, \core\output\notification::NOTIFY_ERROR);
     }
 
+    // An approved exercise that has just been revised is no longer the thing
+    // that was approved, so it goes back for review. Students keep the approved
+    // version in the meantime.
+    exercise_workflow::after_publish($exercise);
+
     if ($report['valid']) {
         redirect(
             $pageurl,

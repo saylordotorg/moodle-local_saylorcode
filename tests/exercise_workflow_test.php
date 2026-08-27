@@ -273,26 +273,110 @@ final class exercise_workflow_test extends \advanced_testcase {
     }
 
     /**
-     * Submitting for review needs only the authoring capability; approving
-     * needs the publish one.
+     * Each move maps to the capability defined for that job.
+     *
+     * Approving is publishcontent, sending back is reviewcontent, submitting is
+     * ordinary authoring, and withdrawing is publishexercise. Collapsing these
+     * would deny a designated approver their own action and let anyone who can
+     * cut a version approve one for students.
      */
-    public function test_approving_needs_the_publish_capability(): void {
-        $this->assertSame(
-            'local/saylorcode:managecontent',
-            exercise_workflow::required_capability(exercise_workflow::STATUS_INREVIEW)
-        );
-
-        $publishing = [
-            exercise_workflow::STATUS_READY,
-            exercise_workflow::STATUS_RETIRED,
-            exercise_workflow::STATUS_ARCHIVED,
+    public function test_each_transition_maps_to_its_own_capability(): void {
+        $expected = [
+            exercise_workflow::STATUS_INREVIEW => 'local/saylorcode:managecontent',
+            exercise_workflow::STATUS_READY => 'local/saylorcode:publishcontent',
+            exercise_workflow::STATUS_DRAFT => 'local/saylorcode:reviewcontent',
+            exercise_workflow::STATUS_RETIRED => 'local/saylorcode:publishexercise',
+            exercise_workflow::STATUS_ARCHIVED => 'local/saylorcode:publishexercise',
         ];
 
-        foreach ($publishing as $status) {
-            $this->assertSame(
-                'local/saylorcode:publishexercise',
-                exercise_workflow::required_capability($status)
-            );
+        foreach ($expected as $status => $capability) {
+            $this->assertSame($capability, exercise_workflow::required_capability($status), $status);
         }
+    }
+
+    /**
+     * A latest-following activity serves the approved version, not the newest.
+     *
+     * The hole this closes: an author revising an approved exercise publishes a
+     * new version to work on it. If resolution followed the newest published
+     * version, that revision -- reviewed by nobody, possibly broken -- would
+     * reach every latest-following class the moment it was saved.
+     */
+    public function test_a_revision_does_not_reach_students_before_review(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        solution_validator::set_test_provider(new scripted_provider(['Hello']));
+
+        $repo = new exercise_repository();
+        $exercise = $this->publishable('CS101-U07-E01');
+
+        $exercise = exercise_workflow::transition($exercise, exercise_workflow::STATUS_INREVIEW);
+        $exercise = exercise_workflow::transition($exercise, exercise_workflow::STATUS_READY);
+        $this->assertSame(1, (int) $exercise->approvedversion);
+
+        // The author revises and publishes again.
+        $repo->write_draft($exercise, ['startercode' => 'public class Main { /* revised */ }']);
+        $repo->publish($exercise, 'Second');
+        exercise_workflow::after_publish($exercise);
+
+        $reloaded = $repo->find('CS101-U07-E01');
+
+        // Two versions exist and the newest is 2, but the approved one is still 1.
+        $this->assertSame(2, (int) $reloaded->currentversion);
+        $this->assertSame(1, (int) $reloaded->approvedversion);
+
+        // What a student gets is still the reviewed content.
+        $served = $repo->get_for_use($reloaded);
+        $this->assertSame(1, (int) $served->version);
+        $this->assertStringNotContainsString('revised', (string) $served->startercode);
+
+        // And the exercise is back in review, so somebody has to look at it.
+        $this->assertSame(exercise_workflow::STATUS_INREVIEW, $reloaded->status);
+    }
+
+    /**
+     * Approving the revision is what promotes it to students.
+     */
+    public function test_approving_a_revision_promotes_it(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        solution_validator::set_test_provider(new scripted_provider(['Hello', 'Hello']));
+
+        $repo = new exercise_repository();
+        $exercise = $this->publishable('CS101-U07-E02');
+        $exercise = exercise_workflow::transition($exercise, exercise_workflow::STATUS_INREVIEW);
+        $exercise = exercise_workflow::transition($exercise, exercise_workflow::STATUS_READY);
+
+        $repo->write_draft($exercise, ['startercode' => 'public class Main { /* revised */ }']);
+        $repo->publish($exercise, 'Second');
+        $exercise = exercise_workflow::after_publish($exercise);
+
+        $exercise = exercise_workflow::transition($exercise, exercise_workflow::STATUS_READY);
+
+        $served = $repo->get_for_use($repo->find('CS101-U07-E02'));
+        $this->assertSame(2, (int) $served->version);
+        $this->assertStringContainsString('revised', (string) $served->startercode);
+    }
+
+    /**
+     * An exercise that was never approved still serves its newest version.
+     *
+     * Everything written before the workflow existed is in this state, and it
+     * must keep behaving exactly as it did rather than vanishing from courses.
+     */
+    public function test_an_unapproved_exercise_still_serves_its_latest(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $repo = new exercise_repository();
+        $exercise = $this->publishable('CS101-U07-E03');
+
+        $this->assertSame(0, (int) $exercise->approvedversion);
+
+        $served = $repo->get_for_use($exercise);
+        $this->assertNotNull($served);
+        $this->assertSame(1, (int) $served->version);
     }
 }
