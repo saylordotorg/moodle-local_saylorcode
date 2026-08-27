@@ -103,6 +103,49 @@ final class resolve_source_filename_test extends \advanced_testcase {
     }
 
     /**
+     * A leading line comment does not swallow the declaration below it.
+     *
+     * Starter code very often opens with a header comment, so this is the
+     * common case, not an edge one.
+     */
+    public function test_a_leading_line_comment_does_not_hide_the_class(): void {
+        $source = "// Your task: greet the world.\npublic class Hello {\n    // fill this in\n}";
+
+        $this->assertSame('Hello.java', $this->java()->resolve_source_filename($source));
+    }
+
+    /**
+     * A public declaration inside a string literal is not the class.
+     */
+    public function test_a_string_literal_is_not_a_declaration(): void {
+        $source = 'public class Greeter { void t() { System.out.println("public class Fake {}"); } }';
+
+        // The real public class is Greeter; the string must not win.
+        $this->assertSame('Greeter.java', $this->java()->resolve_source_filename($source));
+    }
+
+    /**
+     * A public inner class does not rename the file.
+     *
+     * The outer class is package-private, so javac accepts any filename; the
+     * public inner class is not a top-level type and must not become the name.
+     */
+    public function test_a_public_inner_class_does_not_name_the_file(): void {
+        $source = "class Outer {\n    public class Inner {}\n}";
+
+        $this->assertSame('Main.java', $this->java()->resolve_source_filename($source));
+    }
+
+    /**
+     * A public top-level class is still found when a public inner class follows.
+     */
+    public function test_the_top_level_public_class_wins_over_an_inner_one(): void {
+        $source = "public class Program {\n    public class Helper {}\n}";
+
+        $this->assertSame('Program.java', $this->java()->resolve_source_filename($source));
+    }
+
+    /**
      * Package-private code has no public type, so the entry filename stands.
      *
      * javac accepts any filename for a class that is not public, so there is

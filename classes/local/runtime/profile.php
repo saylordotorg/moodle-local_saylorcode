@@ -170,27 +170,57 @@ final class profile {
     }
 
     /**
-     * The name of the first public top-level type in Java source, if any.
+     * The name of the public top-level type in Java source, if any.
      *
-     * Comments are stripped first, so a description like "// a public class that
-     * greets" cannot be mistaken for the declaration. A string literal holding
-     * the same words is left, but that is vanishingly unlikely in the small
-     * programs this runs and not worth a full parser to rule out. Valid Java has
-     * at most one public top-level type, so the first match is the governing one.
+     * This is a heuristic, not a parser, but a careful one, because getting it
+     * wrong renames the file to a class that does not exist and turns a working
+     * program into a runtime failure. Three things are neutralised before the
+     * match so they cannot masquerade as the declaration:
+     *
+     * - Comments. Line comments are removed to the end of their line and block
+     *   comments across lines, so a description such as "// a public class that
+     *   greets" is not read as code. (An earlier version stripped line comments
+     *   with the dot-all flag, which swallowed everything after the first "//"
+     *   including the real declaration -- the common case of starter code with a
+     *   header comment.)
+     * - String and character literals. Their contents are blanked, so
+     *   "public class Fake" inside a string cannot match, and a brace inside a
+     *   literal cannot throw off the depth count below.
+     * - Nesting. Only a declaration at brace depth zero is a top-level type; a
+     *   public inner class inside a package-private outer one must not rename the
+     *   file to the inner class, which is not what the launcher would run.
+     *
+     * Valid Java has at most one public top-level type, so the first one found at
+     * depth zero is the governing one.
      *
      * @param string $sourcecode The source.
      * @return string|null The type name, or null when there is no public type.
      */
     protected static function public_type_name(string $sourcecode): ?string {
-        $stripped = preg_replace('~//.*|/\*.*?\*/~s', '', $sourcecode);
+        // Line comments to the end of the line; block comments across lines.
+        $code = preg_replace('~//[^\n]*~', '', $sourcecode);
+        $code = preg_replace('~/\*.*?\*/~s', '', (string) $code);
+
+        // Blank the contents of string and character literals.
+        $code = preg_replace('~"(?:\\\\.|[^"\\\\])*"~s', '""', (string) $code);
+        $code = preg_replace("~'(?:\\\\.|[^'\\\\])*'~s", "''", (string) $code);
 
         $pattern = '~\bpublic\s+'
             . '(?:(?:final|abstract|sealed|non-sealed|strictfp)\s+)*'
             . '(?:class|interface|enum|record)\s+'
             . '([A-Za-z_$][A-Za-z0-9_$]*)~';
 
-        if (preg_match($pattern, (string) $stripped, $matches)) {
-            return $matches[1];
+        if (!preg_match_all($pattern, (string) $code, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        foreach ($matches[0] as $index => $match) {
+            $before = substr((string) $code, 0, $match[1]);
+            $depth = substr_count($before, '{') - substr_count($before, '}');
+
+            if ($depth === 0) {
+                return $matches[1][$index][0];
+            }
         }
 
         return null;
