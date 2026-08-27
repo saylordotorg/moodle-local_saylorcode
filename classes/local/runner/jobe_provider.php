@@ -358,10 +358,15 @@ class jobe_provider implements provider_interface {
             $sourcecode = '';
         }
 
+        // The filename Jobe compiles under is not always the entry filename:
+        // Java needs the file named after the student's public class, or javac
+        // refuses it. The profile decides, since the rule is language specific.
+        $sourcefilename = $profile->resolve_source_filename((string) $sourcecode);
+
         return [
             'run_spec' => [
                 'language_id' => $profile->get_language_id(),
-                'sourcefilename' => $entry,
+                'sourcefilename' => $sourcefilename,
                 'sourcecode' => $sourcecode,
                 'input' => $request->get_stdin(),
                 'parameters' => [

@@ -134,6 +134,69 @@ final class profile {
     }
 
     /**
+     * The filename the source should be compiled under.
+     *
+     * Usually the entry filename, but Java refuses to compile a public type
+     * unless the file is named after it, and an exercise routinely asks a
+     * student to write a class of a given name -- "write a class named Hello".
+     * Compiling that as Main.java fails with an error about the filename rather
+     * than anything about the student's code, which teaches nothing. Naming the
+     * file after the public type is exactly what javac expects, and the launcher
+     * then runs the class of the same name. This was confirmed against the
+     * runner: Main.java holding "public class Hello" fails to compile; Hello.java
+     * holding the same source runs.
+     *
+     * Only Java needs this; every other runtime compiles or interprets a file
+     * whatever it is called, so their entry filename stands.
+     *
+     * @param string $sourcecode The entry file's contents.
+     * @return string
+     */
+    public function resolve_source_filename(string $sourcecode): string {
+        if ($this->languageid !== 'java') {
+            return $this->entryfilename;
+        }
+
+        $classname = self::public_type_name($sourcecode);
+        if ($classname === null) {
+            // No public top-level type: javac accepts any filename, so there is
+            // nothing to reconcile and the entry filename stands.
+            return $this->entryfilename;
+        }
+
+        $extension = pathinfo($this->entryfilename, PATHINFO_EXTENSION);
+
+        return $classname . ($extension !== '' ? '.' . $extension : '.java');
+    }
+
+    /**
+     * The name of the first public top-level type in Java source, if any.
+     *
+     * Comments are stripped first, so a description like "// a public class that
+     * greets" cannot be mistaken for the declaration. A string literal holding
+     * the same words is left, but that is vanishingly unlikely in the small
+     * programs this runs and not worth a full parser to rule out. Valid Java has
+     * at most one public top-level type, so the first match is the governing one.
+     *
+     * @param string $sourcecode The source.
+     * @return string|null The type name, or null when there is no public type.
+     */
+    protected static function public_type_name(string $sourcecode): ?string {
+        $stripped = preg_replace('~//.*|/\*.*?\*/~s', '', $sourcecode);
+
+        $pattern = '~\bpublic\s+'
+            . '(?:(?:final|abstract|sealed|non-sealed|strictfp)\s+)*'
+            . '(?:class|interface|enum|record)\s+'
+            . '([A-Za-z_$][A-Za-z0-9_$]*)~';
+
+        if (preg_match($pattern, (string) $stripped, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
      * CPU seconds allowed.
      *
      * @return int
