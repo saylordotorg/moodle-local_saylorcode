@@ -86,5 +86,49 @@ function xmldb_local_saylorcode_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026081902, 'local', 'saylorcode');
     }
 
+    if ($oldversion < 2026082505) {
+        // The review workflow (specification section 10.8). Exercises that
+        // already exist predate it, so they need a defensible starting state
+        // rather than the column default: one with a published version has been
+        // through whatever review the site was doing informally and is in use,
+        // so calling it draft would misrepresent it and, once status gates new
+        // use, could pull working content out of courses. Published means ready;
+        // anything still unpublished stays a draft.
+        $table = new xmldb_table('local_saylorcode_exercises');
+        $field = new xmldb_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'draft', 'currentversion');
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+
+            $DB->set_field_select(
+                'local_saylorcode_exercises',
+                'status',
+                'ready',
+                'currentversion > 0'
+            );
+        }
+
+        // What a latest-following activity serves. Held apart from
+        // currentversion so that publishing a revision does not put unreviewed
+        // content in front of students the moment it is saved.
+        $approved = new xmldb_field('approvedversion', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'status');
+
+        if (!$dbman->field_exists($table, $approved)) {
+            $dbman->add_field($table, $approved);
+
+            // Existing published exercises are already being served and are
+            // being called Ready above, so the version in use is by definition
+            // the approved one. Leaving it at zero would be equivalent, since
+            // zero falls back to the newest published version, but recording it
+            // means the first revision after this upgrade is held back for
+            // review rather than going straight out.
+            $DB->execute(
+                'UPDATE {local_saylorcode_exercises} SET approvedversion = currentversion WHERE currentversion > 0'
+            );
+        }
+
+        upgrade_plugin_savepoint(true, 2026082505, 'local', 'saylorcode');
+    }
+
     return true;
 }
