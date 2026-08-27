@@ -134,6 +134,99 @@ final class profile {
     }
 
     /**
+     * The filename the source should be compiled under.
+     *
+     * Usually the entry filename, but Java refuses to compile a public type
+     * unless the file is named after it, and an exercise routinely asks a
+     * student to write a class of a given name -- "write a class named Hello".
+     * Compiling that as Main.java fails with an error about the filename rather
+     * than anything about the student's code, which teaches nothing. Naming the
+     * file after the public type is exactly what javac expects, and the launcher
+     * then runs the class of the same name. This was confirmed against the
+     * runner: Main.java holding "public class Hello" fails to compile; Hello.java
+     * holding the same source runs.
+     *
+     * Only Java needs this; every other runtime compiles or interprets a file
+     * whatever it is called, so their entry filename stands.
+     *
+     * @param string $sourcecode The entry file's contents.
+     * @return string
+     */
+    public function resolve_source_filename(string $sourcecode): string {
+        if ($this->languageid !== 'java') {
+            return $this->entryfilename;
+        }
+
+        $classname = self::public_type_name($sourcecode);
+        if ($classname === null) {
+            // No public top-level type: javac accepts any filename, so there is
+            // nothing to reconcile and the entry filename stands.
+            return $this->entryfilename;
+        }
+
+        $extension = pathinfo($this->entryfilename, PATHINFO_EXTENSION);
+
+        return $classname . ($extension !== '' ? '.' . $extension : '.java');
+    }
+
+    /**
+     * The name of the public top-level type in Java source, if any.
+     *
+     * This is a heuristic, not a parser, but a careful one, because getting it
+     * wrong renames the file to a class that does not exist and turns a working
+     * program into a runtime failure. Three things are neutralised before the
+     * match so they cannot masquerade as the declaration:
+     *
+     * - Comments. Line comments are removed to the end of their line and block
+     *   comments across lines, so a description such as "// a public class that
+     *   greets" is not read as code. (An earlier version stripped line comments
+     *   with the dot-all flag, which swallowed everything after the first "//"
+     *   including the real declaration -- the common case of starter code with a
+     *   header comment.)
+     * - String and character literals. Their contents are blanked, so
+     *   "public class Fake" inside a string cannot match, and a brace inside a
+     *   literal cannot throw off the depth count below.
+     * - Nesting. Only a declaration at brace depth zero is a top-level type; a
+     *   public inner class inside a package-private outer one must not rename the
+     *   file to the inner class, which is not what the launcher would run.
+     *
+     * Valid Java has at most one public top-level type, so the first one found at
+     * depth zero is the governing one.
+     *
+     * @param string $sourcecode The source.
+     * @return string|null The type name, or null when there is no public type.
+     */
+    protected static function public_type_name(string $sourcecode): ?string {
+        // Line comments to the end of the line; block comments across lines.
+        $code = preg_replace('~//[^\n]*~', '', $sourcecode);
+        $code = preg_replace('~/\*.*?\*/~s', '', (string) $code);
+
+        // Blank the contents of string and character literals.
+        $code = preg_replace('~"(?:\\\\.|[^"\\\\])*"~s', '""', (string) $code);
+        $code = preg_replace("~'(?:\\\\.|[^'\\\\])*'~s", "''", (string) $code);
+
+        $pattern = '~\bpublic\s+'
+            . '(?:(?:final|abstract|sealed|non-sealed|strictfp)\s+)*'
+            . '(?:class|interface|enum|record)\s+'
+            . '([A-Za-z_$][A-Za-z0-9_$]*)~';
+
+        if (!preg_match_all($pattern, (string) $code, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        foreach ($matches[0] as $index => $match) {
+            $before = substr((string) $code, 0, $match[1]);
+            $depth = substr_count($before, '{') - substr_count($before, '}');
+
+            if ($depth === 0) {
+                return $matches[1][$index][0];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * CPU seconds allowed.
      *
      * @return int
