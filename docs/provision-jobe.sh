@@ -147,6 +147,14 @@ if [ -f "$CI4_CONFIG" ]; then
         || fail "edited $CI4_CONFIG no longer parses"
 
     echo "toolchain set to UTF-8"
+else
+    # No silent pass for the older layout. Whether a CI3 jobe honours these
+    # settings at all cannot be established from the current checkout, and a
+    # runner that quietly mangles every accented character is worse than one
+    # that refuses to finish building: the first fails in front of a student,
+    # the second fails in front of whoever is provisioning it. Same reasoning
+    # as the unknown-layout case above.
+    fail "cannot configure UTF-8 for this jobe layout; use a current jobe checkout"
 fi
 
 # --- Deny student processes any network -------------------------------------
