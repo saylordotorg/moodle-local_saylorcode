@@ -87,6 +87,8 @@ against.
 | Infinite loop | `outcome 13` | `TIMEOUT`, MVP criterion 16 |
 | Socket to a public address | connection refused | MVP criterion 17 |
 | Public IP from outside AWS | connection times out | Spec section 14.1 |
+| Non-ASCII source and output | `café`, `π`, `∑` compile and print unchanged | Jobe `javac_extraflags` / `java_extraflags` set to UTF-8 |
+| Program reading stdin with the Input tab empty | fails as a runtime error, not a hang | batch execution: stdin is the Input tab, not a terminal |
 
 ## Adding a language
 
