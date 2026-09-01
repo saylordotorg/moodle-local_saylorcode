@@ -151,6 +151,44 @@ final class execution_response {
     }
 
     /**
+     * Whether the program stopped because it asked for input that was not there.
+     *
+     * A program that reads standard input and is given none does not hang here.
+     * Execution is batch: the input is supplied up front, so the read reaches
+     * end of input immediately and the runtime raises. The resulting stack
+     * trace is accurate and useless to a beginner, who sees a crash without
+     * being told the thing that would fix it -- that the program wanted input
+     * and none was provided.
+     *
+     * Recognised by signature, because the runner reports a stack trace rather
+     * than a structured reason. The signatures are per language and this knows
+     * only the two that matter today; anything unrecognised simply falls back
+     * to the ordinary runtime error message, which is no worse than before.
+     *
+     * @return bool
+     */
+    public function ran_out_of_input(): bool {
+        if ($this->state !== execution_state::RUNTIME_ERROR) {
+            return false;
+        }
+
+        $signatures = [
+            // Java: Scanner, whether reading a token or a line.
+            'java.util.NoSuchElementException',
+            // Python: input() and sys.stdin.readline() at end of file.
+            'EOFError',
+        ];
+
+        foreach ($signatures as $signature) {
+            if (strpos($this->stderr, $signature) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Get all test results, including hidden ones.
      *
      * @return test_result[]
