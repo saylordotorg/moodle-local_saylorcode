@@ -172,15 +172,30 @@ final class execution_response {
             return false;
         }
 
+        // Each entry is a set of strings that must all appear. The exception
+        // class alone is not evidence: an exhausted Iterator raises Java's
+        // NoSuchElementException too, and a short pickle file raises Python's
+        // EOFError, and neither has anything to do with standard input. So the
+        // match also requires the context that makes it about input.
         $signatures = [
-            // Java: Scanner, whether reading a token or a line.
-            'java.util.NoSuchElementException',
-            // Python: input() and sys.stdin.readline() at end of file.
-            'EOFError',
+            // Java, reading a token or a line off a Scanner that has run dry.
+            ['java.util.NoSuchElementException', 'java.util.Scanner'],
+            // Python's input() at end of file. Its message is specific enough
+            // on its own; a bare EOFError is not.
+            ['EOFError: EOF when reading a line'],
         ];
 
-        foreach ($signatures as $signature) {
-            if (strpos($this->stderr, $signature) !== false) {
+        foreach ($signatures as $required) {
+            $matched = true;
+
+            foreach ($required as $needle) {
+                if (strpos($this->stderr, $needle) === false) {
+                    $matched = false;
+                    break;
+                }
+            }
+
+            if ($matched) {
                 return true;
             }
         }

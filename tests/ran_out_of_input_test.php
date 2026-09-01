@@ -67,6 +67,37 @@ final class ran_out_of_input_test extends \advanced_testcase {
         $this->assertTrue($this->response(execution_state::RUNTIME_ERROR, $stderr)->ran_out_of_input());
     }
 
+
+    /**
+     * An exhausted Iterator is not missing input, despite the same exception.
+     *
+     * java.util.NoSuchElementException is not specific to standard input --
+     * calling next() on a spent Iterator raises it too. Advising the Input tab
+     * there would send a student to fix something that is not the problem, so
+     * a Scanner frame has to be present as well.
+     */
+    public function test_an_exhausted_iterator_is_not_missing_input(): void {
+        $stderr = "Exception in thread \"main\" java.util.NoSuchElementException\n"
+            . "\tat java.base/java.util.ArrayList\$Itr.next(ArrayList.java:970)\n"
+            . "\tat Main.main(Main.java:8)\n";
+
+        $this->assertFalse($this->response(execution_state::RUNTIME_ERROR, $stderr)->ran_out_of_input());
+    }
+
+    /**
+     * A bare Python EOFError is not missing standard input either.
+     *
+     * Reading a truncated pickle raises EOFError with nothing to do with the
+     * Input tab, so the match asks for the message input() actually produces.
+     */
+    public function test_a_bare_python_eoferror_is_not_missing_input(): void {
+        $stderr = "Traceback (most recent call last):\n"
+            . "  File \"program.py\", line 3, in <module>\n"
+            . "    data = pickle.load(f)\n"
+            . "EOFError: Ran out of input\n";
+
+        $this->assertFalse($this->response(execution_state::RUNTIME_ERROR, $stderr)->ran_out_of_input());
+    }
     /**
      * An ordinary runtime error is not mistaken for missing input.
      *
