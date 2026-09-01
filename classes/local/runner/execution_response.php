@@ -151,6 +151,59 @@ final class execution_response {
     }
 
     /**
+     * Whether the program stopped because it asked for input that was not there.
+     *
+     * A program that reads standard input and is given none does not hang here.
+     * Execution is batch: the input is supplied up front, so the read reaches
+     * end of input immediately and the runtime raises. The resulting stack
+     * trace is accurate and useless to a beginner, who sees a crash without
+     * being told the thing that would fix it -- that the program wanted input
+     * and none was provided.
+     *
+     * Recognised by signature, because the runner reports a stack trace rather
+     * than a structured reason. The signatures are per language and this knows
+     * only the two that matter today; anything unrecognised simply falls back
+     * to the ordinary runtime error message, which is no worse than before.
+     *
+     * @return bool
+     */
+    public function ran_out_of_input(): bool {
+        if ($this->state !== execution_state::RUNTIME_ERROR) {
+            return false;
+        }
+
+        // Each entry is a set of strings that must all appear. The exception
+        // class alone is not evidence: an exhausted Iterator raises Java's
+        // NoSuchElementException too, and a short pickle file raises Python's
+        // EOFError, and neither has anything to do with standard input. So the
+        // match also requires the context that makes it about input.
+        $signatures = [
+            // Java, reading a token or a line off a Scanner that has run dry.
+            ['java.util.NoSuchElementException', 'java.util.Scanner'],
+            // Python's input() at end of file. Its message is specific enough
+            // on its own; a bare EOFError is not.
+            ['EOFError: EOF when reading a line'],
+        ];
+
+        foreach ($signatures as $required) {
+            $matched = true;
+
+            foreach ($required as $needle) {
+                if (strpos($this->stderr, $needle) === false) {
+                    $matched = false;
+                    break;
+                }
+            }
+
+            if ($matched) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Get all test results, including hidden ones.
      *
      * @return test_result[]
