@@ -123,6 +123,32 @@ else
 fi
 set -x
 
+# --- Make the toolchain UTF-8 -----------------------------------------------
+# Java on a C-locale host defaults to US-ASCII, which breaks two ordinary
+# things: javac refuses source containing any non-ASCII character with
+# "unmappable character for encoding US-ASCII", and a program that prints one
+# emits a question mark instead. Exercises are authored in Moodle, which is
+# UTF-8 throughout, so accented words and mathematical symbols are normal
+# content rather than an edge case.
+#
+# Set through jobe's own extraflags, which it appends to the JVM defaults.
+# Sending interpreterargs from the client would replace jobe's
+# -Xrs -Xss8m -Xmx200m instead of adding to them, quietly taking the signal
+# handling, stack and heap limits with it.
+if [ -f "$CI4_CONFIG" ]; then
+    sed -i -E "s/(javac_extraflags = )'';/\1'-encoding UTF-8';/" "$CI4_CONFIG"
+    sed -i -E "s/(java_extraflags = )'';/\1'-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8';/" "$CI4_CONFIG"
+
+    grep -q "encoding UTF-8" "$CI4_CONFIG" \
+        || fail "could not set javac_extraflags in $CI4_CONFIG"
+    grep -q "file.encoding=UTF-8" "$CI4_CONFIG" \
+        || fail "could not set java_extraflags in $CI4_CONFIG"
+    php -l "$CI4_CONFIG" > /dev/null \
+        || fail "edited $CI4_CONFIG no longer parses"
+
+    echo "toolchain set to UTF-8"
+fi
+
 # --- Deny student processes any network -------------------------------------
 # Specification section 14.1 requires that student code cannot reach the
 # internet or the private network. Jobe runs every job as an unprivileged
