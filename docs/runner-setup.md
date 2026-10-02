@@ -90,14 +90,69 @@ against.
 | Non-ASCII source and output | `café`, `π`, `∑` compile and print unchanged | Jobe `javac_extraflags` / `java_extraflags` set to UTF-8 |
 | Program reading stdin with the Input tab empty | fails as a runtime error, not a hang | batch execution: stdin is the Input tab, not a terminal |
 
-## Adding a language
+## Languages
 
-The runner already carries c, cpp, java, php and python3. Exposing one to authors
-takes two steps:
+| Profile | Language id | Runs on | Site setting | Default |
+|---|---|---|---|---|
+| `java17-console` | `java` | runner | `enablejava` | on |
+| `javascript-node` | `nodejs` | runner | `enablejavascript` | off |
+| `r-console` | `r` | runner | `enabler` | off |
+| `html-web` | `html` | student's browser | `enablehtml` | on |
+| `css-web` | `css` | student's browser | `enablecss` | on |
+
+JavaScript and R are off by default because a runner built before they were
+added does not have them, and every run would fail. Turn each on only once the
+runner lists its language id:
+
+```bash
+curl -s http://localhost/jobe/index.php/restapi/languages
+```
+
+The site status report (*Site administration → Reports → System status*) warns
+when an enabled language is missing from the runner.
+
+### Bringing an existing runner up to date
+
+`provision-jobe.sh` installs `nodejs` and `r-base-core` and writes Jobe's R
+task, `app/Libraries/RTask.php`. Stock Jobe has no R; it discovers languages from
+`app/Libraries/<Name>Task.php`, so that file is the whole of adding one. On a
+runner provisioned earlier, install the packages, copy the `RTask.php` block out
+of the script, and clear Jobe's language cache:
+
+```bash
+apt-get install -y nodejs r-base-core
+# ...write app/Libraries/RTask.php as in provision-jobe.sh...
+rm -f /tmp/jobe_language_cache_file
+```
+
+Not yet recorded against the reference build, so check by hand before enabling
+either: a `console.log` hello world in JavaScript, `cat("hi\n")` in R, an R
+program reading `readLines(file("stdin"))`, and an infinite loop in each, which
+must end in `TIMEOUT`.
+
+### Memory floors
+
+Jobe limits *address space*, not memory actually used. Node's V8 and R reserve
+far more address space than they touch, so under the 256 MB site maximum they
+fail before running a line. Their profiles carry a 512 MB floor that the site
+maximum cannot clamp below. Check this on a new runner image before enabling
+either language: a hello world that fails with a memory error means the floor
+needs raising.
+
+### HTML and CSS
+
+These never reach the runner. The workspace renders the page in a sandboxed
+frame (`sandbox="allow-scripts"`, no same origin), so a student's script cannot
+read the Moodle session or call Moodle's web services. A CSS activity styles a
+page the author supplies on the activity form. Neither can be graded by test
+cases, so they are limited to the playground and practice modes.
+
+### Adding another language
 
 1. Add a `profile` in `profile_manager::get_definitions()` with its stable id,
    entry filename and resource limits.
 2. Add a site setting to enable it, following `enablejava`.
+3. Map its language id to an editor grammar in `mod_saylorcode/editor`.
 
 Exercises reference the profile id, so no exercise changes when a runtime is
 added, upgraded or retired.

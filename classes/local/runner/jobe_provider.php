@@ -186,7 +186,9 @@ class jobe_provider implements provider_interface {
     public function get_supported_profiles(): array {
         $enabled = [];
         foreach ($this->profiles->get_enabled_profiles() as $profile) {
-            $enabled[] = $profile->get_id();
+            if (!$profile->runs_in_browser()) {
+                $enabled[] = $profile->get_id();
+            }
         }
         return $enabled;
     }
@@ -212,6 +214,24 @@ class jobe_provider implements provider_interface {
                 0.0,
                 false,
                 'unknown_profile'
+            );
+        }
+
+        // A browser profile is a page, not a program. Nothing in it is meant to
+        // execute on the runner, and Jobe has no language to execute it with.
+        if ($profile->runs_in_browser()) {
+            return new execution_response(
+                $request->get_request_id(),
+                execution_state::INTERNAL_ERROR,
+                '',
+                '',
+                '',
+                [],
+                null,
+                0.0,
+                0.0,
+                false,
+                'browser_profile'
             );
         }
 

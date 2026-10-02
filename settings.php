@@ -148,6 +148,37 @@ if ($hassiteconfig) {
         1
     ));
 
+    // Off by default: a site whose runner predates these languages would
+    // otherwise offer authors a profile every run of which fails.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enablejavascript',
+        get_string('settings:enablejavascript', 'local_saylorcode'),
+        get_string('settings:enablejavascript_desc', 'local_saylorcode'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enabler',
+        get_string('settings:enabler', 'local_saylorcode'),
+        get_string('settings:enabler_desc', 'local_saylorcode'),
+        0
+    ));
+
+    // On by default, because they depend on nothing but the browser.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enablehtml',
+        get_string('settings:enablehtml', 'local_saylorcode'),
+        get_string('settings:enablehtml_desc', 'local_saylorcode'),
+        1
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enablecss',
+        get_string('settings:enablecss', 'local_saylorcode'),
+        get_string('settings:enablecss_desc', 'local_saylorcode'),
+        1
+    ));
+
     // Retention.
     $settings->add(new admin_setting_heading(
         'local_saylorcode/retentionheading',

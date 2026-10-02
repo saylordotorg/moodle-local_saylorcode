@@ -41,6 +41,8 @@ apt-get install -y \
     openjdk-17-jdk \
     python3 \
     python3-pip \
+    nodejs \
+    r-base-core \
     acl \
     git \
     unzip \
@@ -52,6 +54,64 @@ if [ ! -d /var/www/html/jobe ]; then
     git clone https://github.com/trampgeek/jobe.git
 fi
 cd /var/www/html/jobe
+
+# --- R ----------------------------------------------------------------------
+# Stock Jobe has no R. It discovers languages from app/Libraries/<Name>Task.php,
+# so dropping this class in is the whole of adding one; the language id is the
+# lowercased prefix, "r", which is what the r-console profile sends.
+#
+# Rscript rather than R: it runs a file non-interactively and does not echo the
+# program back into the output. --vanilla keeps a site or user profile out of
+# the run, so every student starts from the same empty session.
+cat > /var/www/html/jobe/app/Libraries/RTask.php <<'RTASK'
+<?php
+
+/* ==============================================================
+ *
+ * R, added for Saylor Code Studio.
+ *
+ * ==============================================================
+ */
+
+namespace Jobe;
+
+class RTask extends LanguageTask
+{
+    public function __construct($filename, $input, $params)
+    {
+        parent::__construct($filename, $input, $params);
+        $this->default_params['interpreterargs'] = array('--vanilla');
+    }
+
+    public static function getVersionCommand()
+    {
+        return array('R --version', '/R version ([0-9._]*)/');
+    }
+
+    public function compile()
+    {
+        // Interpreted: nothing to build, and syntax errors surface at run time.
+        $this->executableFileName = $this->sourceFileName;
+    }
+
+    public function defaultFileName($sourcecode)
+    {
+        return 'prog.R';
+    }
+
+    public function getExecutablePath()
+    {
+        return '/usr/bin/Rscript';
+    }
+
+    public function getTargetFile()
+    {
+        return $this->sourceFileName;
+    }
+}
+RTASK
+php -l /var/www/html/jobe/app/Libraries/RTask.php > /dev/null \
+    || { echo "FATAL: RTask.php does not parse" >&2; exit 1; }
 
 # Jobe's installer creates the jobe00..jobeNN run accounts, sets ownership and
 # builds the runguard sandbox helper.
@@ -178,5 +238,9 @@ netfilter-persistent save || iptables-save > /etc/iptables/rules.v4
 a2enmod rewrite
 systemctl enable apache2
 systemctl restart apache2
+
+# Jobe caches the language list in /tmp. Drop it so the first request after a
+# rebuild lists nodejs and r rather than whatever an earlier boot found.
+rm -f /tmp/jobe_language_cache_file
 
 echo "=== jobe setup finished $(date -u) ==="

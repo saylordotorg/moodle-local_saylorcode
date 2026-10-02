@@ -19,7 +19,8 @@ namespace local_saylorcode\local\runtime;
 /**
  * Supplies the runtime profiles available on this site.
  *
- * Phase 1 ships a single Java profile for CS101. Profiles are defined in code
+ * Java, JavaScript and R run on the execution runner. HTML and CSS are rendered
+ * in the student's browser and never reach it. Profiles are defined in code
  * rather than in the database so that a misconfigured row cannot widen a
  * resource limit; site settings may only tighten them.
  *
@@ -30,6 +31,18 @@ namespace local_saylorcode\local\runtime;
 class profile_manager {
     /** @var string The Java profile shipped for the CS101 pilot. */
     public const PROFILE_JAVA17 = 'java17-console';
+
+    /** @var string JavaScript run by Node.js on the runner. */
+    public const PROFILE_JAVASCRIPT = 'javascript-node';
+
+    /** @var string R scripts run by Rscript on the runner. */
+    public const PROFILE_R = 'r-console';
+
+    /** @var string An HTML page rendered in the browser. */
+    public const PROFILE_HTML = 'html-web';
+
+    /** @var string A stylesheet rendered in the browser over an author's page. */
+    public const PROFILE_CSS = 'css-web';
 
     /** @var profile[]|null Lazily built profile cache, keyed by id. */
     protected ?array $profiles = null;
@@ -80,14 +93,39 @@ class profile_manager {
     /**
      * Menu of enabled profiles for a settings or authoring form.
      *
+     * Anything graded by test cases passes false, because a browser profile
+     * produces a page rather than output and has nothing to compare.
+     *
+     * @param bool $includebrowser Whether to list profiles rendered in the browser.
      * @return array Profile id => display name.
      */
-    public function get_menu(): array {
+    public function get_menu(bool $includebrowser = true): array {
         $menu = [];
         foreach ($this->get_enabled_profiles() as $profile) {
+            if (!$includebrowser && $profile->runs_in_browser()) {
+                continue;
+            }
             $menu[$profile->get_id()] = $profile->get_display_name();
         }
         return $menu;
+    }
+
+    /**
+     * Ids of every profile rendered in the browser, enabled or not.
+     *
+     * For form dependencies, which must still hide a field correctly on an
+     * activity whose language has since been switched off.
+     *
+     * @return string[]
+     */
+    public function get_browser_profile_ids(): array {
+        $ids = [];
+        foreach ($this->get_all_profiles() as $profile) {
+            if ($profile->runs_in_browser()) {
+                $ids[] = $profile->get_id();
+            }
+        }
+        return $ids;
     }
 
     /**
@@ -111,7 +149,9 @@ class profile_manager {
      * @return profile[]
      */
     protected function get_definitions(): array {
-        $javaenabled = (bool) get_config('local_saylorcode', 'enablejava');
+        $enabled = static function (string $name): bool {
+            return (bool) get_config('local_saylorcode', $name);
+        };
 
         return [
             new profile(
@@ -124,7 +164,66 @@ class profile_manager {
                 20,
                 32,
                 65536,
-                $javaenabled
+                $enabled('enablejava')
+            ),
+            // Node and R reserve far more address space than they use, and Jobe
+            // limits address space. Both get a floor above Jobe's own 400 MB
+            // default, which is what its test suite runs Node under.
+            new profile(
+                self::PROFILE_JAVASCRIPT,
+                get_string('profilejavascript', 'local_saylorcode'),
+                'nodejs',
+                'main.js',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enablejavascript'),
+                profile::MODE_RUNNER,
+                512
+            ),
+            new profile(
+                self::PROFILE_R,
+                get_string('profiler', 'local_saylorcode'),
+                'r',
+                'main.R',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enabler'),
+                profile::MODE_RUNNER,
+                512
+            ),
+            // The limits on a browser profile are never sent anywhere; the
+            // student's own browser is what renders the page.
+            new profile(
+                self::PROFILE_HTML,
+                get_string('profilehtml', 'local_saylorcode'),
+                'html',
+                'index.html',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enablehtml'),
+                profile::MODE_BROWSER
+            ),
+            new profile(
+                self::PROFILE_CSS,
+                get_string('profilecss', 'local_saylorcode'),
+                'css',
+                'style.css',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enablecss'),
+                profile::MODE_BROWSER
             ),
         ];
     }

@@ -65,8 +65,11 @@ reaches the runner (spec §13.4). The privacy provider declares this transmissio
 - **Execution backend** — Jobe base URL, API key, request timeout.
 - **Resource ceilings** — CPU seconds, memory, disk, processes, output bytes, per-user
   concurrency. These are site maximums that no profile may exceed.
-- **Runtime profiles** — enable or disable a language. Disabling Java takes it offline
-  without touching a single exercise.
+- **Runtime profiles** — enable or disable a language: Java, JavaScript (Node.js) and R run
+  on the runner; HTML and CSS are drawn in the student's browser and never reach it.
+  Disabling a language takes it offline without touching a single exercise. JavaScript and
+  R start disabled, because the runner has to be provisioned for them first — see
+  `docs/runner-setup.md`.
 - **Retention** — snapshots kept per attempt, execution log retention.
 
 The Jobe address must not be reachable from the public internet.
@@ -77,7 +80,6 @@ This is the Phase 1 vertical slice from spec §24. Deliberately **not** in this 
 
 - The activity, embed filter and TinyMCE button — separate repositories.
 - The central authoring library, versioning workflow and usage reporting (Phase 3).
-- Languages other than Java (Phase 2+).
 - Test execution against a harness. `jobe_provider::execute()` currently returns program
   output; assembling and scoring a test set is the next increment.
 

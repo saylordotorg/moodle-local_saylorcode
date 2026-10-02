@@ -29,6 +29,18 @@ namespace local_saylorcode\local\runtime;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class profile {
+    /** @var string The program is sent to the execution runner. */
+    public const MODE_RUNNER = 'runner';
+
+    /**
+     * @var string The program is rendered in the student's browser.
+     *
+     * HTML and CSS have nothing to execute: they are a page, and the browser is
+     * what draws it. Such a profile never reaches the runner, and the workspace
+     * renders it into a sandboxed frame instead (specification section 14.2).
+     */
+    public const MODE_BROWSER = 'browser';
+
     /** @var string Stable profile id referenced by exercise content. */
     private string $id;
 
@@ -59,6 +71,12 @@ final class profile {
     /** @var bool Whether administrators have enabled this profile. */
     private bool $enabled;
 
+    /** @var string Where the program runs, one of the MODE_ constants. */
+    private string $executionmode;
+
+    /** @var int Memory the interpreter needs merely to start, in megabytes. */
+    private int $minmemorymb;
+
     /**
      * Build a profile.
      *
@@ -72,6 +90,8 @@ final class profile {
      * @param int $maxprocesses Process and thread ceiling.
      * @param int $outputlimitbytes Output ceiling in bytes.
      * @param bool $enabled Whether the profile is enabled.
+     * @param string $executionmode Where the program runs, one of the MODE_ constants.
+     * @param int $minmemorymb Memory the interpreter needs merely to start.
      */
     public function __construct(
         string $id,
@@ -83,7 +103,9 @@ final class profile {
         int $diskmb = 20,
         int $maxprocesses = 32,
         int $outputlimitbytes = 65536,
-        bool $enabled = true
+        bool $enabled = true,
+        string $executionmode = self::MODE_RUNNER,
+        int $minmemorymb = 0
     ) {
         $this->id = $id;
         $this->displayname = $displayname;
@@ -95,6 +117,8 @@ final class profile {
         $this->maxprocesses = $maxprocesses;
         $this->outputlimitbytes = $outputlimitbytes;
         $this->enabled = $enabled;
+        $this->executionmode = $executionmode;
+        $this->minmemorymb = $minmemorymb;
     }
 
     /**
@@ -281,10 +305,39 @@ final class profile {
     }
 
     /**
+     * Where the program runs.
+     *
+     * @return string One of the MODE_ constants.
+     */
+    public function get_execution_mode(): string {
+        return $this->executionmode;
+    }
+
+    /**
+     * Whether the program is rendered in the browser rather than executed.
+     *
+     * A browser profile has no console output to compare, so it cannot be
+     * graded by test cases and must never be sent to the runner.
+     *
+     * @return bool
+     */
+    public function runs_in_browser(): bool {
+        return $this->executionmode === self::MODE_BROWSER;
+    }
+
+    /**
      * Return a copy with limits clamped to the supplied site maximums.
      *
      * Authors may request stricter limits than the site default but must never
      * be able to raise them (specification section 13.7).
+     *
+     * Memory is the one exception, and only as far as the profile's floor.
+     * Jobe enforces memory as a ceiling on address space, not on what the
+     * program actually uses, and some interpreters reserve far more address
+     * space than they touch: Node's V8 and R both fail before running a line
+     * under a ceiling Java is comfortable with. Clamping such a profile below
+     * its floor would not tighten anything; it would make every program fail
+     * with a memory error that is the platform's fault, not the student's.
      *
      * @param array $maximums Keyed by cpuseconds, memorymb, diskmb, maxprocesses, outputlimitbytes.
      * @return self
@@ -296,11 +349,13 @@ final class profile {
             $this->languageid,
             $this->entryfilename,
             min($this->cpuseconds, (int) ($maximums['cpuseconds'] ?? $this->cpuseconds)),
-            min($this->memorymb, (int) ($maximums['memorymb'] ?? $this->memorymb)),
+            max($this->minmemorymb, min($this->memorymb, (int) ($maximums['memorymb'] ?? $this->memorymb))),
             min($this->diskmb, (int) ($maximums['diskmb'] ?? $this->diskmb)),
             min($this->maxprocesses, (int) ($maximums['maxprocesses'] ?? $this->maxprocesses)),
             min($this->outputlimitbytes, (int) ($maximums['outputlimitbytes'] ?? $this->outputlimitbytes)),
-            $this->enabled
+            $this->enabled,
+            $this->executionmode,
+            $this->minmemorymb
         );
     }
 }
