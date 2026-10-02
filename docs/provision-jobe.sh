@@ -239,8 +239,9 @@ a2enmod rewrite
 systemctl enable apache2
 systemctl restart apache2
 
-# Jobe caches the language list in /tmp. Drop it so the first request after a
-# rebuild lists nodejs and r rather than whatever an earlier boot found.
-rm -f /tmp/jobe_language_cache_file
+# Jobe caches the language list in Apache's /tmp, which is a systemd PrivateTmp
+# directory rather than the real /tmp. The restart above already gave Apache a
+# fresh one; this clears any copy a re-run of the script would leave behind.
+rm -f /tmp/systemd-private-*-apache2.service-*/tmp/jobe_language_cache_file
 
 echo "=== jobe setup finished $(date -u) ==="

@@ -107,8 +107,8 @@ final class profile_manager_test extends \advanced_testcase {
     /**
      * The site memory maximum tightens a profile but never below its floor.
      *
-     * Jobe limits address space, and Node and R cannot start under a ceiling
-     * Java is happy with; clamping them there would fail every run.
+     * Jobe limits address space, and Node cannot start under a ceiling Java
+     * is happy with; clamping it there would fail every run.
      */
     public function test_memory_floor_survives_the_site_maximum(): void {
         $profile = new profile('node', 'Node', 'nodejs', 'main.js', 5, 256, 20, 32, 65536, true, profile::MODE_RUNNER, 512);
@@ -116,6 +116,24 @@ final class profile_manager_test extends \advanced_testcase {
 
         $java = new profile('java', 'Java', 'java', 'Main.java', 5, 256);
         $this->assertSame(128, $java->clamped_to(['memorymb' => 128])->get_memory_mb());
+    }
+
+    /**
+     * The shipped profiles: Node is held at its floor, R is not.
+     *
+     * R starts at 128 MB on the dev runner, so it has no reason to escape the
+     * site maximum the way Node does.
+     */
+    public function test_shipped_memory_floors(): void {
+        $this->resetAfterTest();
+        $this->enable_all();
+        set_config('maxmemorymb', 128, 'local_saylorcode');
+
+        $profiles = (new profile_manager())->get_enabled_profiles();
+
+        $this->assertSame(512, $profiles[profile_manager::PROFILE_JAVASCRIPT]->get_memory_mb());
+        $this->assertSame(128, $profiles[profile_manager::PROFILE_R]->get_memory_mb());
+        $this->assertSame(128, $profiles[profile_manager::PROFILE_JAVA17]->get_memory_mb());
     }
 
     /**

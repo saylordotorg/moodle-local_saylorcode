@@ -334,8 +334,8 @@ final class profile {
      * Memory is the one exception, and only as far as the profile's floor.
      * Jobe enforces memory as a ceiling on address space, not on what the
      * program actually uses, and some interpreters reserve far more address
-     * space than they touch: Node's V8 and R both fail before running a line
-     * under a ceiling Java is comfortable with. Clamping such a profile below
+     * space than they touch: Node's V8 fails before running a line under a
+     * ceiling Java is comfortable with. Clamping such a profile below
      * its floor would not tighten anything; it would make every program fail
      * with a memory error that is the platform's fault, not the student's.
      *

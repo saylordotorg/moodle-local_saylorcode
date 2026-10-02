@@ -53,6 +53,22 @@ final class output_sanitiser_test extends \advanced_testcase {
     }
 
     /**
+     * Node reports errors against the sandbox path too, recorded verbatim
+     * from the dev runner; the student keeps the file and line.
+     */
+    public function test_node_error_paths_are_removed(): void {
+        $raw = "/home/jobe/runs/jobe_QPU3ZC/main.js:1\nundefinedFunction();\n^\n\n"
+            . 'ReferenceError: undefinedFunction is not defined';
+
+        $clean = output_sanitiser::sanitise($raw);
+
+        $this->assertStringNotContainsString('/home/jobe', $clean);
+        $this->assertStringNotContainsString('jobe_QPU3ZC', $clean);
+        $this->assertStringContainsString('main.js:1', $clean);
+        $this->assertStringContainsString('ReferenceError: undefinedFunction is not defined', $clean);
+    }
+
+    /**
      * Host names and addresses must not leak.
      */
     public function test_host_detail_is_removed(): void {

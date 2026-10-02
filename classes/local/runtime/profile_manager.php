@@ -166,9 +166,9 @@ class profile_manager {
                 65536,
                 $enabled('enablejava')
             ),
-            // Node and R reserve far more address space than they use, and Jobe
-            // limits address space. Both get a floor above Jobe's own 400 MB
-            // default, which is what its test suite runs Node under.
+            // Node's V8 reserves far more address space than it uses, and Jobe
+            // limits address space. Measured on the dev runner (Node 12): it
+            // dies in CodeRange setup at 256 MB and runs at 384 MB, so 512.
             new profile(
                 self::PROFILE_JAVASCRIPT,
                 get_string('profilejavascript', 'local_saylorcode'),
@@ -193,9 +193,7 @@ class profile_manager {
                 20,
                 32,
                 65536,
-                $enabled('enabler'),
-                profile::MODE_RUNNER,
-                512
+                $enabled('enabler')
             ),
             // The limits on a browser profile are never sent anywhere; the
             // student's own browser is what renders the page.

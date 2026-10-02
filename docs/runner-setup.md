@@ -120,24 +120,44 @@ runner provisioned earlier, install the packages, copy the `RTask.php` block out
 of the script, and clear Jobe's language cache:
 
 ```bash
-apt-get install -y nodejs r-base-core
+apt-get install -y --no-install-recommends nodejs r-base-core
 # ...write app/Libraries/RTask.php as in provision-jobe.sh...
-rm -f /tmp/jobe_language_cache_file
+rm -f /tmp/systemd-private-*-apache2.service-*/tmp/jobe_language_cache_file
 ```
 
-Not yet recorded against the reference build, so check by hand before enabling
-either: a `console.log` hello world in JavaScript, `cat("hi\n")` in R, an R
-program reading `readLines(file("stdin"))`, and an infinite loop in each, which
-must end in `TIMEOUT`.
+The cache is not in `/tmp`. Apache runs with systemd's `PrivateTmp`, so the
+`/tmp` Jobe writes to is a private directory under the real one; removing
+`/tmp/jobe_language_cache_file` does nothing, and `/languages` keeps reporting
+the old list. Restarting Apache also clears it, at the cost of failing any run
+in flight.
 
 ### Memory floors
 
-Jobe limits *address space*, not memory actually used. Node's V8 and R reserve
-far more address space than they touch, so under the 256 MB site maximum they
-fail before running a line. Their profiles carry a 512 MB floor that the site
-maximum cannot clamp below. Check this on a new runner image before enabling
-either language: a hello world that fails with a memory error means the floor
-needs raising.
+Jobe limits *address space*, not memory actually used. Node's V8 reserves far
+more address space than it touches: on the dev runner (Node 12.22) a hello world
+dies with *"Fatal process OOM in CodeRange setup"* at 256 MB and runs at 384 MB.
+The JavaScript profile therefore carries a 512 MB floor that the site maximum
+cannot clamp below. R needs no floor; it runs a hello world at 128 MB, so it
+honours the site maximum like Java. Recheck Node on a new runner image or Node
+version before relying on the floor.
+
+### Verified on the dev runner
+
+2026-10-02, Node 12.22.9 and R 4.1.2 from Ubuntu 22.04, through Jobe's REST API
+with the parameters Moodle sends:
+
+| Check | JavaScript | R |
+|---|---|---|
+| Hello world | `SUCCESS` (from 384 MB) | `SUCCESS` (from 128 MB) |
+| Reads stdin | `SUCCESS` | `SUCCESS` (`readLines(file("stdin"))`) |
+| Non-ASCII output | `café π ∑` unchanged | `café π ∑` unchanged |
+| Syntax error | `RUNTIME_ERROR` with line (no compile step) | `RUNTIME_ERROR`, `unexpected end of input` |
+| Infinite loop | `TIME_LIMIT` | `TIME_LIMIT` |
+| HTTP to a public address | `ECONNREFUSED` | `cannot open the connection` |
+| Allocating without bound | `RUNTIME_ERROR`, heap out of memory | `RUNTIME_ERROR`, cannot allocate vector |
+
+A runaway allocation is reported as a runtime error rather than `MEMORY_LIMIT`,
+because both interpreters catch the failed allocation and exit themselves.
 
 ### HTML and CSS
 
