@@ -326,18 +326,37 @@ final class profile {
     }
 
     /**
+     * Memory the interpreter needs merely to start, in megabytes.
+     *
+     * @return int Zero when the interpreter has no such requirement.
+     */
+    public function get_min_memory_mb(): int {
+        return $this->minmemorymb;
+    }
+
+    /**
+     * Whether the interpreter can start within this profile's memory limit.
+     *
+     * Jobe enforces memory as a ceiling on address space, not on what the
+     * program actually uses, and Node's V8 reserves far more address space
+     * than it touches: under a ceiling Java is comfortable with, it fails
+     * before running a line. Such a profile is not raised past the site
+     * maximum to make room, because site settings may only tighten limits.
+     * It is reported as unable to start instead, so the manager can withhold
+     * it and an administrator can be told which ceiling to raise.
+     *
+     * @return bool
+     */
+    public function can_start(): bool {
+        return $this->memorymb >= $this->minmemorymb;
+    }
+
+    /**
      * Return a copy with limits clamped to the supplied site maximums.
      *
      * Authors may request stricter limits than the site default but must never
-     * be able to raise them (specification section 13.7).
-     *
-     * Memory is the one exception, and only as far as the profile's floor.
-     * Jobe enforces memory as a ceiling on address space, not on what the
-     * program actually uses, and some interpreters reserve far more address
-     * space than they touch: Node's V8 fails before running a line under a
-     * ceiling Java is comfortable with. Clamping such a profile below
-     * its floor would not tighten anything; it would make every program fail
-     * with a memory error that is the platform's fault, not the student's.
+     * be able to raise them (specification section 13.7). This holds for
+     * every limit without exception, memory included; see can_start().
      *
      * @param array $maximums Keyed by cpuseconds, memorymb, diskmb, maxprocesses, outputlimitbytes.
      * @return self
@@ -349,7 +368,7 @@ final class profile {
             $this->languageid,
             $this->entryfilename,
             min($this->cpuseconds, (int) ($maximums['cpuseconds'] ?? $this->cpuseconds)),
-            max($this->minmemorymb, min($this->memorymb, (int) ($maximums['memorymb'] ?? $this->memorymb))),
+            min($this->memorymb, (int) ($maximums['memorymb'] ?? $this->memorymb)),
             min($this->diskmb, (int) ($maximums['diskmb'] ?? $this->diskmb)),
             min($this->maxprocesses, (int) ($maximums['maxprocesses'] ?? $this->maxprocesses)),
             min($this->outputlimitbytes, (int) ($maximums['outputlimitbytes'] ?? $this->outputlimitbytes)),

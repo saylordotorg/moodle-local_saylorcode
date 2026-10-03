@@ -131,15 +131,26 @@ The cache is not in `/tmp`. Apache runs with systemd's `PrivateTmp`, so the
 the old list. Restarting Apache also clears it, at the cost of failing any run
 in flight.
 
-### Memory floors
+### JavaScript needs a higher memory maximum
 
 Jobe limits *address space*, not memory actually used. Node's V8 reserves far
 more address space than it touches: on the dev runner (Node 12.22) a hello world
 dies with *"Fatal process OOM in CodeRange setup"* at 256 MB and runs at 384 MB.
-The JavaScript profile therefore carries a 512 MB floor that the site maximum
-cannot clamp below. R needs no floor; it runs a hello world at 128 MB, so it
-honours the site maximum like Java. Recheck Node on a new runner image or Node
-version before relying on the floor.
+
+The site's **Maximum memory** still governs it, as it does every profile:
+settings only ever tighten limits. The JavaScript profile asks for 512 MB and
+needs at least 384 MB, so under the 256 MB default it is **withheld** — not
+offered to authors, and its existing activities report the language as
+unavailable — and the status report says which ceiling to raise. To use
+JavaScript, set Maximum memory to 384 MB or more:
+
+```bash
+sudo -u www-data php admin/cli/cfg.php --component=local_saylorcode --name=maxmemorymb --set=512
+```
+
+That raises the ceiling for every language, so Java, R and the rest may then
+use up to that much too. R needs nothing extra; it runs a hello world at
+128 MB. Recheck Node's requirement on a new runner image or Node version.
 
 ### Verified on the dev runner
 

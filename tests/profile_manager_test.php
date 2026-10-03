@@ -33,12 +33,13 @@ use local_saylorcode\local\runtime\profile_manager;
  */
 final class profile_manager_test extends \advanced_testcase {
     /**
-     * Switch every language on.
+     * Switch every language on, with room for Node to start.
      */
     private function enable_all(): void {
         foreach (['enablejava', 'enablejavascript', 'enabler', 'enablehtml', 'enablecss'] as $name) {
             set_config($name, 1, 'local_saylorcode');
         }
+        set_config('maxmemorymb', 512, 'local_saylorcode');
     }
 
     /**
@@ -105,35 +106,57 @@ final class profile_manager_test extends \advanced_testcase {
     }
 
     /**
-     * The site memory maximum tightens a profile but never below its floor.
+     * The site memory maximum tightens every profile, Node included.
      *
-     * Jobe limits address space, and Node cannot start under a ceiling Java
-     * is happy with; clamping it there would fail every run.
+     * Site settings may only tighten limits. A profile that needs more to
+     * start than the ceiling allows is reported as unable to start, never
+     * raised past it.
      */
-    public function test_memory_floor_survives_the_site_maximum(): void {
-        $profile = new profile('node', 'Node', 'nodejs', 'main.js', 5, 256, 20, 32, 65536, true, profile::MODE_RUNNER, 512);
-        $this->assertSame(512, $profile->clamped_to(['memorymb' => 128])->get_memory_mb());
+    public function test_memory_never_exceeds_the_site_maximum(): void {
+        $node = new profile('node', 'Node', 'nodejs', 'main.js', 5, 512, 20, 32, 65536, true, profile::MODE_RUNNER, 384);
 
-        $java = new profile('java', 'Java', 'java', 'Main.java', 5, 256);
-        $this->assertSame(128, $java->clamped_to(['memorymb' => 128])->get_memory_mb());
+        $clamped = $node->clamped_to(['memorymb' => 256]);
+        $this->assertSame(256, $clamped->get_memory_mb());
+        $this->assertFalse($clamped->can_start());
+
+        $roomy = $node->clamped_to(['memorymb' => 1024]);
+        $this->assertSame(512, $roomy->get_memory_mb());
+        $this->assertTrue($roomy->can_start());
     }
 
     /**
-     * The shipped profiles: Node is held at its floor, R is not.
-     *
-     * R starts at 128 MB on the dev runner, so it has no reason to escape the
-     * site maximum the way Node does.
+     * Under a ceiling Node cannot start in, JavaScript is withheld and named
+     * for the status check; R and Java carry on at the ceiling.
      */
-    public function test_shipped_memory_floors(): void {
+    public function test_a_starved_profile_is_withheld(): void {
         $this->resetAfterTest();
         $this->enable_all();
-        set_config('maxmemorymb', 128, 'local_saylorcode');
+        set_config('maxmemorymb', 256, 'local_saylorcode');
 
-        $profiles = (new profile_manager())->get_enabled_profiles();
+        $manager = new profile_manager();
+        $enabled = $manager->get_enabled_profiles();
 
-        $this->assertSame(512, $profiles[profile_manager::PROFILE_JAVASCRIPT]->get_memory_mb());
-        $this->assertSame(128, $profiles[profile_manager::PROFILE_R]->get_memory_mb());
-        $this->assertSame(128, $profiles[profile_manager::PROFILE_JAVA17]->get_memory_mb());
+        $this->assertArrayNotHasKey(profile_manager::PROFILE_JAVASCRIPT, $enabled);
+        $this->assertArrayNotHasKey(profile_manager::PROFILE_JAVASCRIPT, $manager->get_menu());
+        $this->assertNull($manager->get_profile(profile_manager::PROFILE_JAVASCRIPT));
+        $this->assertSame([profile_manager::PROFILE_JAVASCRIPT], array_keys($manager->get_starved_profiles()));
+
+        $this->assertSame(256, $enabled[profile_manager::PROFILE_R]->get_memory_mb());
+        $this->assertSame(256, $enabled[profile_manager::PROFILE_JAVA17]->get_memory_mb());
+    }
+
+    /**
+     * With room to start, JavaScript is offered at 384 MB and up.
+     */
+    public function test_javascript_starts_at_its_minimum(): void {
+        $this->resetAfterTest();
+        $this->enable_all();
+        set_config('maxmemorymb', 384, 'local_saylorcode');
+
+        $profile = (new profile_manager())->get_profile(profile_manager::PROFILE_JAVASCRIPT);
+
+        $this->assertNotNull($profile);
+        $this->assertSame(384, $profile->get_memory_mb());
     }
 
     /**

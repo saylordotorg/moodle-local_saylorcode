@@ -77,6 +77,23 @@ class runner extends check {
             return new result(result::CRITICAL, $health->get_detail());
         }
 
+        // A language switched on but held back by the memory ceiling is not
+        // offered to anyone, which looks like a bug unless someone says why.
+        $starved = [];
+        foreach ((new profile_manager())->get_starved_profiles() as $profile) {
+            $starved[] = get_string('check:runnermemoryprofile', 'local_saylorcode', [
+                'name' => $profile->get_display_name(),
+                'needed' => $profile->get_min_memory_mb(),
+            ]);
+        }
+        if ($starved) {
+            return new result(
+                result::WARNING,
+                get_string('check:runnermemory', 'local_saylorcode', implode(', ', $starved)),
+                implode(', ', $health->get_profiles())
+            );
+        }
+
         // A language switched on in Moodle but missing from the runner fails
         // every run, so it is worth an administrator's attention even though
         // the runner itself is well.

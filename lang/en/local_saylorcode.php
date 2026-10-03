@@ -26,6 +26,8 @@ defined('MOODLE_INTERNAL') || die();
 
 $string['check:runner'] = 'Saylor Code Studio runner';
 $string['check:runneraction'] = 'Runner settings';
+$string['check:runnermemory'] = 'Some enabled languages cannot start under the site memory maximum, so they are not offered: {$a}. Raise Maximum memory, or disable them.';
+$string['check:runnermemoryprofile'] = '{$a->name} needs at least {$a->needed} MB';
 $string['check:runnermissing'] = 'The runner is reachable, but does not offer every enabled language: {$a}. Every run in these languages will fail until the runner is provisioned for them or they are disabled.';
 $string['check:runnerok'] = 'The runner answered in {$a->latency}s and offers {$a->profiles} language profiles.';
 $string['checkdeferredaccessibility'] = 'Instructions and controls carry accessible labels';
@@ -126,7 +128,7 @@ $string['settings:enablehtml_desc'] = 'Allow activities to use the HTML profile.
 $string['settings:enablejava'] = 'Enable Java';
 $string['settings:enablejava_desc'] = 'Allow exercises to use the Java console runtime profile. Disable this to take Java offline without editing any exercise.';
 $string['settings:enablejavascript'] = 'Enable JavaScript';
-$string['settings:enablejavascript_desc'] = 'Allow exercises to use the JavaScript console profile, run by Node.js on the runner. Enable this only once the runner reports the nodejs language.';
+$string['settings:enablejavascript_desc'] = 'Allow exercises to use the JavaScript console profile, run by Node.js on the runner. Enable this only once the runner reports the nodejs language. Node needs a Maximum memory of at least 384 MB to start; below that the profile is withheld and the status report says so.';
 $string['settings:enabler'] = 'Enable R';
 $string['settings:enabler_desc'] = 'Allow exercises to use the R console profile, run by Rscript on the runner. Enable this only once the runner reports the r language; stock Jobe does not include it, so see docs/runner-setup.md.';
 $string['settings:executionlogretention'] = 'Execution log retention';

@@ -69,13 +69,29 @@ class profile_manager {
     }
 
     /**
-     * Profiles administrators have enabled.
+     * Profiles administrators have enabled and that can actually start.
+     *
+     * A profile whose interpreter cannot start under the site memory maximum
+     * is withheld rather than offered, because every run would fail; the
+     * runner status check names it and the ceiling it needs.
      *
      * @return profile[] Keyed by profile id.
      */
     public function get_enabled_profiles(): array {
         return array_filter($this->get_all_profiles(), static function (profile $profile): bool {
-            return $profile->is_enabled();
+            return $profile->is_enabled() && $profile->can_start();
+        });
+    }
+
+    /**
+     * Profiles administrators have enabled that cannot start under the site
+     * memory maximum.
+     *
+     * @return profile[] Keyed by profile id.
+     */
+    public function get_starved_profiles(): array {
+        return array_filter($this->get_all_profiles(), static function (profile $profile): bool {
+            return $profile->is_enabled() && !$profile->can_start();
         });
     }
 
@@ -168,20 +184,21 @@ class profile_manager {
             ),
             // Node's V8 reserves far more address space than it uses, and Jobe
             // limits address space. Measured on the dev runner (Node 12): it
-            // dies in CodeRange setup at 256 MB and runs at 384 MB, so 512.
+            // dies in CodeRange setup at 256 MB and runs at 384 MB. It asks for
+            // 512, and is withheld when the site maximum leaves it under 384.
             new profile(
                 self::PROFILE_JAVASCRIPT,
                 get_string('profilejavascript', 'local_saylorcode'),
                 'nodejs',
                 'main.js',
                 5,
-                256,
+                512,
                 20,
                 32,
                 65536,
                 $enabled('enablejavascript'),
                 profile::MODE_RUNNER,
-                512
+                384
             ),
             new profile(
                 self::PROFILE_R,
