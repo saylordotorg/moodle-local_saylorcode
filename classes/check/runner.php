@@ -19,6 +19,7 @@ namespace local_saylorcode\check;
 use core\check\check;
 use core\check\result;
 use local_saylorcode\local\runner\jobe_provider;
+use local_saylorcode\local\runtime\profile_manager;
 
 /**
  * Whether the execution runner is reachable.
@@ -74,6 +75,40 @@ class runner extends check {
 
         if (!$health->is_healthy()) {
             return new result(result::CRITICAL, $health->get_detail());
+        }
+
+        // A language switched on but held back by the memory ceiling is not
+        // offered to anyone, which looks like a bug unless someone says why.
+        $starved = [];
+        foreach ((new profile_manager())->get_starved_profiles() as $profile) {
+            $starved[] = get_string('check:runnermemoryprofile', 'local_saylorcode', [
+                'name' => $profile->get_display_name(),
+                'needed' => $profile->get_min_memory_mb(),
+            ]);
+        }
+        if ($starved) {
+            return new result(
+                result::WARNING,
+                get_string('check:runnermemory', 'local_saylorcode', implode(', ', $starved)),
+                implode(', ', $health->get_profiles())
+            );
+        }
+
+        // A language switched on in Moodle but missing from the runner fails
+        // every run, so it is worth an administrator's attention even though
+        // the runner itself is well.
+        $missing = [];
+        foreach ((new profile_manager())->get_enabled_profiles() as $profile) {
+            if (!$profile->runs_in_browser() && !in_array($profile->get_language_id(), $health->get_profiles(), true)) {
+                $missing[] = $profile->get_display_name();
+            }
+        }
+        if ($missing) {
+            return new result(
+                result::WARNING,
+                get_string('check:runnermissing', 'local_saylorcode', implode(', ', $missing)),
+                implode(', ', $health->get_profiles())
+            );
         }
 
         $summary = get_string('check:runnerok', 'local_saylorcode', [

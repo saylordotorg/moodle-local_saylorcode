@@ -90,14 +90,100 @@ against.
 | Non-ASCII source and output | `café`, `π`, `∑` compile and print unchanged | Jobe `javac_extraflags` / `java_extraflags` set to UTF-8 |
 | Program reading stdin with the Input tab empty | fails as a runtime error, not a hang | batch execution: stdin is the Input tab, not a terminal |
 
-## Adding a language
+## Languages
 
-The runner already carries c, cpp, java, php and python3. Exposing one to authors
-takes two steps:
+| Profile | Language id | Runs on | Site setting | Default |
+|---|---|---|---|---|
+| `java17-console` | `java` | runner | `enablejava` | on |
+| `javascript-node` | `nodejs` | runner | `enablejavascript` | off |
+| `r-console` | `r` | runner | `enabler` | off |
+| `html-web` | `html` | student's browser | `enablehtml` | on |
+| `css-web` | `css` | student's browser | `enablecss` | on |
+
+JavaScript and R are off by default because a runner built before they were
+added does not have them, and every run would fail. Turn each on only once the
+runner lists its language id:
+
+```bash
+curl -s http://localhost/jobe/index.php/restapi/languages
+```
+
+The site status report (*Site administration → Reports → System status*) warns
+when an enabled language is missing from the runner.
+
+### Bringing an existing runner up to date
+
+`provision-jobe.sh` installs `nodejs` and `r-base-core` and writes Jobe's R
+task, `app/Libraries/RTask.php`. Stock Jobe has no R; it discovers languages from
+`app/Libraries/<Name>Task.php`, so that file is the whole of adding one. On a
+runner provisioned earlier, install the packages, copy the `RTask.php` block out
+of the script, and clear Jobe's language cache:
+
+```bash
+apt-get install -y --no-install-recommends nodejs r-base-core
+# ...write app/Libraries/RTask.php as in provision-jobe.sh...
+rm -f /tmp/systemd-private-*-apache2.service-*/tmp/jobe_language_cache_file
+```
+
+The cache is not in `/tmp`. Apache runs with systemd's `PrivateTmp`, so the
+`/tmp` Jobe writes to is a private directory under the real one; removing
+`/tmp/jobe_language_cache_file` does nothing, and `/languages` keeps reporting
+the old list. Restarting Apache also clears it, at the cost of failing any run
+in flight.
+
+### JavaScript needs a higher memory maximum
+
+Jobe limits *address space*, not memory actually used. Node's V8 reserves far
+more address space than it touches: on the dev runner (Node 12.22) a hello world
+dies with *"Fatal process OOM in CodeRange setup"* at 256 MB and runs at 384 MB.
+
+The site's **Maximum memory** still governs it, as it does every profile:
+settings only ever tighten limits. The JavaScript profile asks for 512 MB and
+needs at least 384 MB, so under the 256 MB default it is **withheld** — not
+offered to authors, and its existing activities report the language as
+unavailable — and the status report says which ceiling to raise. To use
+JavaScript, set Maximum memory to 384 MB or more:
+
+```bash
+sudo -u www-data php admin/cli/cfg.php --component=local_saylorcode --name=maxmemorymb --set=512
+```
+
+That raises the ceiling for every language, so Java, R and the rest may then
+use up to that much too. R needs nothing extra; it runs a hello world at
+128 MB. Recheck Node's requirement on a new runner image or Node version.
+
+### Verified on the dev runner
+
+2026-10-02, Node 12.22.9 and R 4.1.2 from Ubuntu 22.04, through Jobe's REST API
+with the parameters Moodle sends:
+
+| Check | JavaScript | R |
+|---|---|---|
+| Hello world | `SUCCESS` (from 384 MB) | `SUCCESS` (from 128 MB) |
+| Reads stdin | `SUCCESS` | `SUCCESS` (`readLines(file("stdin"))`) |
+| Non-ASCII output | `café π ∑` unchanged | `café π ∑` unchanged |
+| Syntax error | `RUNTIME_ERROR` with line (no compile step) | `RUNTIME_ERROR`, `unexpected end of input` |
+| Infinite loop | `TIME_LIMIT` | `TIME_LIMIT` |
+| HTTP to a public address | `ECONNREFUSED` | `cannot open the connection` |
+| Allocating without bound | `RUNTIME_ERROR`, heap out of memory | `RUNTIME_ERROR`, cannot allocate vector |
+
+A runaway allocation is reported as a runtime error rather than `MEMORY_LIMIT`,
+because both interpreters catch the failed allocation and exit themselves.
+
+### HTML and CSS
+
+These never reach the runner. The workspace renders the page in a sandboxed
+frame (`sandbox="allow-scripts"`, no same origin), so a student's script cannot
+read the Moodle session or call Moodle's web services. A CSS activity styles a
+page the author supplies on the activity form. Neither can be graded by test
+cases, so they are limited to the playground and practice modes.
+
+### Adding another language
 
 1. Add a `profile` in `profile_manager::get_definitions()` with its stable id,
    entry filename and resource limits.
 2. Add a site setting to enable it, following `enablejava`.
+3. Map its language id to an editor grammar in `mod_saylorcode/editor`.
 
 Exercises reference the profile id, so no exercise changes when a runtime is
 added, upgraded or retired.

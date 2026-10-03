@@ -74,7 +74,9 @@ class exercise_form extends moodleform {
             'select',
             'profileid',
             get_string('profileid', 'local_saylorcode'),
-            (new profile_manager())->get_menu()
+            // A library exercise is graded by its test cases, which a page
+            // rendered in the browser has no output to satisfy.
+            (new profile_manager())->get_menu(false)
         );
 
         $mform->addElement(
@@ -294,6 +296,21 @@ class exercise_form extends moodleform {
 
         if ($stableid !== '' && !stable_id::is_valid($stableid)) {
             $errors['stableid'] = get_string('stableidinvalid', 'local_saylorcode');
+        }
+
+        // Main.java is the default, so an author who picks JavaScript or R and
+        // leaves it would publish an exercise whose file names the wrong language.
+        $profiles = (new profile_manager())->get_all_profiles();
+        $profile = $profiles[(string) ($data['profileid'] ?? '')] ?? null;
+        if ($profile !== null) {
+            $expected = pathinfo($profile->get_entry_filename(), PATHINFO_EXTENSION);
+            $given = pathinfo(trim((string) ($data['entryfilename'] ?? '')), PATHINFO_EXTENSION);
+            if (strcasecmp($expected, $given) !== 0) {
+                $errors['entryfilename'] = get_string('exerciseentryfileextension', 'local_saylorcode', [
+                    'extension' => '.' . $expected,
+                    'example' => $profile->get_entry_filename(),
+                ]);
+            }
         }
 
         // A row is only meaningful if it says what it expects, and a weight of
