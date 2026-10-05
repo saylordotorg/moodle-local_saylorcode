@@ -95,13 +95,16 @@ against.
 | Profile | Language id | Runs on | Site setting | Default |
 |---|---|---|---|---|
 | `java17-console` | `java` | runner | `enablejava` | on |
+| `python3-console` | `python3` | runner | `enablepython` | off |
+| `cpp17-console` | `cpp` | runner | `enablecpp` | off |
+| `rust-console` | `rust` | runner | `enablerust` | off |
 | `javascript-node` | `nodejs` | runner | `enablejavascript` | off |
 | `r-console` | `r` | runner | `enabler` | off |
 | `html-web` | `html` | student's browser | `enablehtml` | on |
 | `css-web` | `css` | student's browser | `enablecss` | on |
 
-JavaScript and R are off by default because a runner built before they were
-added does not have them, and every run would fail. Turn each on only once the
+The languages added after Java are off by default, because a runner built
+before them may not have them, and every run would fail. Turn each on only once the
 runner lists its language id:
 
 ```bash
@@ -113,17 +116,36 @@ when an enabled language is missing from the runner.
 
 ### Bringing an existing runner up to date
 
-`provision-jobe.sh` installs `nodejs` and `r-base-core` and writes Jobe's R
-task, `app/Libraries/RTask.php`. Stock Jobe has no R; it discovers languages from
-`app/Libraries/<Name>Task.php`, so that file is the whole of adding one. On a
-runner provisioned earlier, install the packages, copy the `RTask.php` block out
-of the script, and clear Jobe's language cache:
+`provision-jobe.sh` installs Node 24 from NodeSource, `r-base-core` and `rustc`,
+and writes Jobe's R and Rust tasks, `app/Libraries/RTask.php` and `RustTask.php`.
+Stock Jobe has neither; it discovers languages from
+`app/Libraries/<Name>Task.php`, so that file is the whole of adding one. Python 3
+and C++ come with Jobe. On a runner provisioned earlier:
 
 ```bash
-apt-get install -y --no-install-recommends nodejs r-base-core
-# ...write app/Libraries/RTask.php as in provision-jobe.sh...
+# Node 24, not Ubuntu's nodejs: on 22.04 that is Node 12. Ubuntu's package is
+# split across nodejs and libnode72, and NodeSource's conflicts with the
+# library, so both are removed first.
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+apt-get update
+apt-get remove -y nodejs libnode72
+apt-get install -y nodejs
+[ -e /usr/bin/nodejs ] || ln -s node /usr/bin/nodejs
+nodejs --version   # must print v24.x
+
+apt-get install -y --no-install-recommends r-base-core rustc
+# ...write RTask.php, CompilesWithWarnings.php and RustTask.php, and patch
+# CppTask.php, as in provision-jobe.sh...
 rm -f /tmp/systemd-private-*-apache2.service-*/tmp/jobe_language_cache_file
 ```
+
+To roll Node back: remove `/etc/apt/sources.list.d/nodesource.list`, then
+`apt-get update && apt-get remove -y nodejs && apt-get install -y nodejs`.
+That brings back Ubuntu's Node 12, which needs the old JavaScript profile.
 
 The cache is not in `/tmp`. Apache runs with systemd's `PrivateTmp`, so the
 `/tmp` Jobe writes to is a private directory under the real one; removing
@@ -133,33 +155,79 @@ in flight.
 
 ### JavaScript needs a higher memory maximum
 
-Jobe limits *address space*, not memory actually used. Node's V8 reserves far
-more address space than it touches: on the dev runner (Node 12.22) a hello world
-dies with *"Fatal process OOM in CodeRange setup"* at 256 MB and runs at 384 MB.
+The runner has Node 24 from NodeSource, not Ubuntu's Node 12, which is end of
+life and rejects ordinary modern JavaScript (`??`, `?.`) as syntax errors.
+
+Jobe limits *address space*, not memory actually used, and Node 24's V8 reserves
+a great deal of address space it never touches. On the dev runner a hello world
+fails with *"Failed to reserve virtual memory for CodeRange"* at 1100 MB and
+runs at 1200 MB. (Node 12 needed only 384 MB.)
+
+So the JavaScript profile asks for 1536 MB of address space and caps the V8
+heap at 256 MB with `--max-old-space-size=256`. The address space is room for
+V8's reservations; the heap cap is what keeps an ordinary runaway program —
+arrays, objects, strings — to about 256 MB of real memory. Memory a program
+takes outside the heap, such as `Buffer.alloc`, is bounded only by the address
+space limit, so one JavaScript job can in the worst case use about 1.5 GB.
+Size the runner with that in mind.
 
 The site's **Maximum memory** still governs it, as it does every profile:
-settings only ever tighten limits. The JavaScript profile asks for 512 MB and
-needs at least 384 MB, so under the 256 MB default it is **withheld** — not
-offered to authors, and its existing activities report the language as
-unavailable — and the status report says which ceiling to raise. To use
-JavaScript, set Maximum memory to 384 MB or more:
+settings only ever tighten limits. Below 1200 MB the JavaScript profile is
+**withheld** — not offered to authors, and its existing activities report the
+language as unavailable — and the status report says which ceiling to raise:
 
 ```bash
-sudo -u www-data php admin/cli/cfg.php --component=local_saylorcode --name=maxmemorymb --set=512
+sudo -u www-data php admin/cli/cfg.php --component=local_saylorcode --name=maxmemorymb --set=1536
 ```
 
-That raises the ceiling for every language, so Java, R and the rest may then
-use up to that much too. R needs nothing extra; it runs a hello world at
-128 MB. Recheck Node's requirement on a new runner image or Node version.
+That only raises what JavaScript gets. Every other profile asks for 256 MB, and
+the ceiling only ever lowers a request, so they stay at 256 MB.
+
+Jobe's default interpreter argument for Node is `--use_strict`. On Node 24 it
+has no effect (a program assigning an undeclared variable runs), so the profile
+sends only the heap cap. Recheck all of this on a new Node major version.
+
+### Compiler warnings for C++ and Rust: the Jobe patch
+
+Stock Jobe decides a compile failed when the compiler printed *anything*,
+warnings included. Its own C++ defaults are `-Wall -Werror`, and `rustc` warns
+about every unused variable, so on stock Jobe a correct beginner's program fails
+over a variable it has not used yet.
+
+`provision-jobe.sh` patches this. It adds a trait,
+`app/Libraries/CompilesWithWarnings.php`, that judges a compile by whether the
+executable was produced. When it was, the compiler's output is kept as warnings,
+the program runs, and the warnings come back in `cmpinfo` next to the program's
+real outcome — `SUCCESS`, or `RUNTIME_ERROR` if it then crashes. Moodle shows
+them above the program's output; they do not affect grading, which compares
+standard output. A compile that produces no executable is a `COMPILE_ERROR`
+exactly as before.
+
+The Rust task uses the trait directly. Jobe's own C++ task gets two verified
+insertions (the original is kept as `CppTask.php.stock`), so a Jobe update that
+reshapes the file fails the build instead of quietly dropping the patch. C is
+left stock; no profile uses it.
+
+With the patch in place the profiles compile with warnings on: C++ with
+`-std=c++17 -Wall`, Rust with `--edition 2021 -C codegen-units=1`.
+
+**The profiles depend on the patch.** On a stock Jobe runner, a C++ or Rust
+program with any warning fails to compile. The compiler itself runs under Jobe's
+compile minimums (500 MB, 2 s, 5 processes, in
+`LanguageTask::$min_params_compile`), which are the runner's own configuration
+rather than a Moodle setting.
 
 ### Verified on the dev runner
 
 2026-10-02, Node 12.22.9 and R 4.1.2 from Ubuntu 22.04, through Jobe's REST API
-with the parameters Moodle sends:
+with the parameters Moodle sends. JavaScript was rechecked on Node 24.21.0 on
+2026-10-05 with the 1536 MB / 256 MB-heap profile: every row below holds, the
+runaway-array row now ends at the heap cap, and `??`, `?.`, private class fields,
+`Array.prototype.at` and `structuredClone` all run.
 
 | Check | JavaScript | R |
 |---|---|---|
-| Hello world | `SUCCESS` (from 384 MB) | `SUCCESS` (from 128 MB) |
+| Hello world | `SUCCESS` (Node 24: from 1200 MB) | `SUCCESS` (from 128 MB) |
 | Reads stdin | `SUCCESS` | `SUCCESS` (`readLines(file("stdin"))`) |
 | Non-ASCII output | `café π ∑` unchanged | `café π ∑` unchanged |
 | Syntax error | `RUNTIME_ERROR` with line (no compile step) | `RUNTIME_ERROR`, `unexpected end of input` |
@@ -167,8 +235,25 @@ with the parameters Moodle sends:
 | HTTP to a public address | `ECONNREFUSED` | `cannot open the connection` |
 | Allocating without bound | `RUNTIME_ERROR`, heap out of memory | `RUNTIME_ERROR`, cannot allocate vector |
 
+2026-10-05, Python 3.10.12, g++ 11.4 and rustc 1.75.0, the same way, with each
+profile's compiler arguments and the warnings patch:
+
+| Check | Python | C++ | Rust |
+|---|---|---|---|
+| Hello world | `SUCCESS` (from 64 MB) | `SUCCESS` (from 64 MB) | `SUCCESS` (from 128 MB), about 0.5 s with the compile |
+| Unused variable | — | `SUCCESS`, warning shown (stock Jobe: `COMPILE_ERROR`) | `SUCCESS`, warning shown (stock Jobe: `COMPILE_ERROR`) |
+| Warning, then a crash | — | `RUNTIME_ERROR`, warning shown | `RUNTIME_ERROR`, warning shown |
+| Reads stdin | `SUCCESS` (`input()`) | `SUCCESS` (`std::cin`) | `SUCCESS` (`read_to_string`) |
+| Non-ASCII output | `café π ∑` unchanged | unchanged | unchanged |
+| Syntax or type error | `COMPILE_ERROR`, `'(' was never closed` | `COMPILE_ERROR`, `'x' was not declared` | `COMPILE_ERROR`, `E0308 mismatched types` |
+| Crash | `RUNTIME_ERROR`, `ZeroDivisionError` | `RUNTIME_ERROR`, segmentation fault | `RUNTIME_ERROR`, index out of bounds panic |
+| Infinite loop | `TIME_LIMIT` | `TIME_LIMIT` | `TIME_LIMIT` |
+| TCP to a public address | blocked (`URLError`) | blocked | blocked (connection refused) |
+| Allocating without bound | `RUNTIME_ERROR`, traceback | `RUNTIME_ERROR`, `std::bad_alloc` | `RUNTIME_ERROR`, allocation failed |
+
 A runaway allocation is reported as a runtime error rather than `MEMORY_LIMIT`,
-because both interpreters catch the failed allocation and exit themselves.
+because every one of these languages catches the failed allocation and exits
+itself.
 
 ### HTML and CSS
 

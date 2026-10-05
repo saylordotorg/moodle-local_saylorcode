@@ -20,6 +20,13 @@ echo "=== jobe setup started $(date -u) ==="
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Defined first, because the script has no set -e: a check that calls fail()
+# before it exists only prints "command not found" and carries on.
+fail() {
+    echo "FATAL: $1" >&2
+    exit 1
+}
+
 apt-get update -y
 apt-get upgrade -y
 
@@ -41,12 +48,31 @@ apt-get install -y \
     openjdk-17-jdk \
     python3 \
     python3-pip \
-    nodejs \
     r-base-core \
+    rustc \
     acl \
     git \
     unzip \
+    gnupg \
     iptables-persistent
+
+# --- Node.js 24 -------------------------------------------------------------
+# Not Ubuntu's nodejs: on 22.04 that is Node 12, end of life since 2022, which
+# rejects ordinary modern JavaScript such as ?? and ?. as syntax errors. Node 24
+# comes from NodeSource's signed apt repository, so security updates arrive
+# through apt like everything else on the host.
+#
+# Jobe runs /usr/bin/nodejs; NodeSource provides it through alternatives, and
+# the link below covers a package that does not.
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+apt-get update -y
+apt-get install -y nodejs
+[ -e /usr/bin/nodejs ] || ln -s node /usr/bin/nodejs
+nodejs --version | grep -q '^v24\.' || { echo "FATAL: expected Node 24, got $(nodejs --version)" >&2; exit 1; }
 
 # --- Install Jobe -----------------------------------------------------------
 cd /var/www/html
@@ -113,6 +139,137 @@ RTASK
 php -l /var/www/html/jobe/app/Libraries/RTask.php > /dev/null \
     || { echo "FATAL: RTask.php does not parse" >&2; exit 1; }
 
+# --- Compiler warnings are not compile errors -------------------------------
+# Stock Jobe decides a compile failed when the compiler wrote anything at all,
+# so a warning fails a correct program: an unused variable in C++ under -Wall,
+# or in any Rust program. This trait decides by whether the compiler produced
+# the executable instead. When it did, the compiler's output is kept as
+# warnings, the program runs, and the warnings come back in cmpinfo alongside
+# the program's real outcome. Moodle shows them above the program's output.
+#
+# Used by the C++ task (patched below) and the Rust task. Without it the
+# cpp17-console and rust-console profiles, which compile with warnings on,
+# fail every program that has a warning.
+cat > /var/www/html/jobe/app/Libraries/CompilesWithWarnings.php <<'TRAIT'
+<?php
+
+/* ==============================================================
+ *
+ * Compiler warnings are not compile errors. Saylor Code Studio patch.
+ *
+ * ==============================================================
+ */
+
+namespace Jobe;
+
+trait CompilesWithWarnings
+{
+    /** @var string Compiler output from a compile that succeeded. */
+    protected string $compilewarnings = '';
+
+    /**
+     * Call after compiling: move warnings out of cmpinfo when the executable
+     * exists, and make sure a failed compile always says something.
+     */
+    protected function separateWarnings(string $execFileName): void
+    {
+        if (is_file($this->workdir . '/' . $execFileName)) {
+            $this->compilewarnings = $this->cmpinfo;
+            $this->cmpinfo = '';
+        } else if (trim($this->cmpinfo) === '') {
+            $this->cmpinfo = 'Compilation failed without a message.';
+        }
+    }
+
+    public function resultObject()
+    {
+        $result = parent::resultObject();
+        if ($this->compilewarnings === '' || $result->outcome == LanguageTask::RESULT_COMPILATION_ERROR) {
+            return $result;
+        }
+        return new ResultObject($result->run_id, $result->outcome, $this->compilewarnings, $result->stdout, $result->stderr);
+    }
+}
+TRAIT
+php -l /var/www/html/jobe/app/Libraries/CompilesWithWarnings.php > /dev/null \
+    || fail "CompilesWithWarnings.php does not parse"
+
+# Two insertions into Jobe's own C++ task, each verified, rather than a copy of
+# the whole file: a Jobe update that reshapes compile() fails the build here
+# instead of silently losing the patch. Idempotent, so a re-run is harmless.
+CPP=/var/www/html/jobe/app/Libraries/CppTask.php
+[ -f "$CPP.stock" ] || cp -p "$CPP" "$CPP.stock"
+if ! grep -q 'use CompilesWithWarnings;' "$CPP"; then
+    perl -0pi -e 's/(class CppTask extends LanguageTask\n\{\n)/$1    use CompilesWithWarnings;\n\n/' "$CPP"
+    perl -0pi -e 's/(list\(\$output, \$this->cmpinfo\) = \$this->runInSandbox\(\$cmd\);\n)/$1        \$this->separateWarnings(\$execFileName);\n/' "$CPP"
+fi
+grep -q 'use CompilesWithWarnings;' "$CPP" || fail "could not add CompilesWithWarnings to $CPP"
+grep -q 'separateWarnings(\$execFileName);' "$CPP" || fail "could not call separateWarnings in $CPP"
+php -l "$CPP" > /dev/null || fail "patched $CPP no longer parses"
+
+# --- Rust -------------------------------------------------------------------
+# Stock Jobe has no Rust either. The language id is "rust", which is what the
+# rust-console profile sends. The profile sends its own compiler arguments; the
+# defaults here match them, for any other client of this runner. Warnings are
+# on and handled by CompilesWithWarnings, above. One codegen unit keeps rustc
+# to a single LLVM thread, inside the sandbox's process limit.
+cat > /var/www/html/jobe/app/Libraries/RustTask.php <<'RUSTTASK'
+<?php
+
+/* ==============================================================
+ *
+ * Rust, added for Saylor Code Studio.
+ *
+ * ==============================================================
+ */
+
+namespace Jobe;
+
+class RustTask extends LanguageTask
+{
+    use CompilesWithWarnings;
+
+    public function __construct($filename, $input, $params)
+    {
+        parent::__construct($filename, $input, $params);
+        $this->default_params['compileargs'] = array('--edition', '2021', '-C', 'codegen-units=1');
+    }
+
+    public static function getVersionCommand()
+    {
+        return array('rustc --version', '/rustc ([0-9._]*)/');
+    }
+
+    public function compile()
+    {
+        $src = basename($this->sourceFileName);
+        $this->executableFileName = $execFileName = "$src.exe";
+        $compileargs = $this->getParam('compileargs');
+        $cmd = 'rustc ' . implode(' ', array_map('escapeshellarg', $compileargs))
+            . ' -o ' . escapeshellarg($execFileName) . ' ' . escapeshellarg($src);
+        list($output, $this->cmpinfo) = $this->runInSandbox($cmd);
+        $this->separateWarnings($execFileName);
+    }
+
+    public function defaultFileName($sourcecode)
+    {
+        return 'prog.rs';
+    }
+
+    public function getExecutablePath()
+    {
+        return './' . $this->executableFileName;
+    }
+
+    public function getTargetFile()
+    {
+        return '';
+    }
+}
+RUSTTASK
+php -l /var/www/html/jobe/app/Libraries/RustTask.php > /dev/null \
+    || { echo "FATAL: RustTask.php does not parse" >&2; exit 1; }
+
 # Jobe's installer creates the jobe00..jobeNN run accounts, sets ownership and
 # builds the runguard sandbox helper.
 python3 ./install || /usr/bin/env python3 ./install
@@ -138,10 +295,6 @@ chmod 600 /opt/jobe-api-key
 # condition guarded it into a no-op, and nothing was ever enforced.
 CI4_CONFIG=/var/www/html/jobe/app/Config/Jobe.php
 CI3_CONFIG=/var/www/html/jobe/application/config/config.php
-fail() {
-    echo "FATAL: $1" >&2
-    exit 1
-}
 
 if [ -f "$CI4_CONFIG" ]; then
     # Each edit is verified rather than trusted. A perl s/// against a future
