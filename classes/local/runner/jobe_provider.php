@@ -383,18 +383,29 @@ class jobe_provider implements provider_interface {
         // refuses it. The profile decides, since the rule is language specific.
         $sourcefilename = $profile->resolve_source_filename((string) $sourcecode);
 
+        $parameters = [
+            'cputime' => $profile->get_cpu_seconds(),
+            'memorylimit' => $profile->get_memory_mb(),
+            'disklimit' => $profile->get_disk_mb(),
+            'numprocs' => $profile->get_max_processes(),
+        ];
+
+        // Only when the profile sets them: sending an empty list would replace
+        // the runner's defaults with no arguments at all.
+        if ($profile->get_compile_args()) {
+            $parameters['compileargs'] = $profile->get_compile_args();
+        }
+        if ($profile->get_interpreter_args()) {
+            $parameters['interpreterargs'] = $profile->get_interpreter_args();
+        }
+
         return [
             'run_spec' => [
                 'language_id' => $profile->get_language_id(),
                 'sourcefilename' => $sourcefilename,
                 'sourcecode' => $sourcecode,
                 'input' => $request->get_stdin(),
-                'parameters' => [
-                    'cputime' => $profile->get_cpu_seconds(),
-                    'memorylimit' => $profile->get_memory_mb(),
-                    'disklimit' => $profile->get_disk_mb(),
-                    'numprocs' => $profile->get_max_processes(),
-                ],
+                'parameters' => $parameters,
             ],
         ];
     }

@@ -151,6 +151,27 @@ if ($hassiteconfig) {
     // Off by default: a site whose runner predates these languages would
     // otherwise offer authors a profile every run of which fails.
     $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enablepython',
+        get_string('settings:enablepython', 'local_saylorcode'),
+        get_string('settings:enablepython_desc', 'local_saylorcode'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enablecpp',
+        get_string('settings:enablecpp', 'local_saylorcode'),
+        get_string('settings:enablecpp_desc', 'local_saylorcode'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_saylorcode/enablerust',
+        get_string('settings:enablerust', 'local_saylorcode'),
+        get_string('settings:enablerust_desc', 'local_saylorcode'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
         'local_saylorcode/enablejavascript',
         get_string('settings:enablejavascript', 'local_saylorcode'),
         get_string('settings:enablejavascript_desc', 'local_saylorcode'),

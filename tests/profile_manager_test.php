@@ -36,10 +36,14 @@ final class profile_manager_test extends \advanced_testcase {
      * Switch every language on, with room for Node to start.
      */
     private function enable_all(): void {
-        foreach (['enablejava', 'enablejavascript', 'enabler', 'enablehtml', 'enablecss'] as $name) {
+        $names = [
+            'enablejava', 'enablepython', 'enablecpp', 'enablerust',
+            'enablejavascript', 'enabler', 'enablehtml', 'enablecss',
+        ];
+        foreach ($names as $name) {
             set_config($name, 1, 'local_saylorcode');
         }
-        set_config('maxmemorymb', 512, 'local_saylorcode');
+        set_config('maxmemorymb', 1536, 'local_saylorcode');
     }
 
     /**
@@ -54,6 +58,9 @@ final class profile_manager_test extends \advanced_testcase {
 
         $expected = [
             profile_manager::PROFILE_JAVA17 => ['java', 'Main.java', false],
+            profile_manager::PROFILE_PYTHON => ['python3', 'main.py', false],
+            profile_manager::PROFILE_CPP => ['cpp', 'main.cpp', false],
+            profile_manager::PROFILE_RUST => ['rust', 'main.rs', false],
             profile_manager::PROFILE_JAVASCRIPT => ['nodejs', 'main.js', false],
             profile_manager::PROFILE_R => ['r', 'main.R', false],
             profile_manager::PROFILE_HTML => ['html', 'index.html', true],
@@ -146,17 +153,73 @@ final class profile_manager_test extends \advanced_testcase {
     }
 
     /**
-     * With room to start, JavaScript is offered at 384 MB and up.
+     * Node 24 needs 1200 MB of address space: withheld just below, offered at
+     * it, and asking for 1536 when the ceiling allows.
      */
     public function test_javascript_starts_at_its_minimum(): void {
         $this->resetAfterTest();
         $this->enable_all();
-        set_config('maxmemorymb', 384, 'local_saylorcode');
 
-        $profile = (new profile_manager())->get_profile(profile_manager::PROFILE_JAVASCRIPT);
+        set_config('maxmemorymb', 1199, 'local_saylorcode');
+        $this->assertNull((new profile_manager())->get_profile(profile_manager::PROFILE_JAVASCRIPT));
 
-        $this->assertNotNull($profile);
-        $this->assertSame(384, $profile->get_memory_mb());
+        set_config('maxmemorymb', 1200, 'local_saylorcode');
+        $this->assertSame(1200, (new profile_manager())->get_profile(profile_manager::PROFILE_JAVASCRIPT)->get_memory_mb());
+
+        set_config('maxmemorymb', 4096, 'local_saylorcode');
+        $this->assertSame(1536, (new profile_manager())->get_profile(profile_manager::PROFILE_JAVASCRIPT)->get_memory_mb());
+    }
+
+    /**
+     * The compiled languages carry their own compiler arguments to the runner:
+     * warnings on, never turned into errors. The others send none and keep the
+     * runner's defaults.
+     */
+    public function test_compiler_arguments_reach_the_runner(): void {
+        $this->resetAfterTest();
+        $this->enable_all();
+
+        $provider = new class ('http://runner.invalid', 'key') extends jobe_provider {
+            /**
+             * Expose the payload.
+             *
+             * @param execution_request $request The request.
+             * @param profile $profile The profile.
+             * @return array
+             */
+            public function payload(execution_request $request, profile $profile): array {
+                return $this->build_payload($request, $profile);
+            }
+        };
+        $manager = new profile_manager();
+        $parameters = function (string $id, string $file) use ($provider, $manager): array {
+            $request = new execution_request('req', $id, execution_request::MODE_RUN, [$file => 'x']);
+            return $provider->payload($request, $manager->get_profile($id))['run_spec']['parameters'];
+        };
+
+        $cpp = $parameters(profile_manager::PROFILE_CPP, 'main.cpp')['compileargs'];
+        $this->assertContains('-Wall', $cpp);
+        $this->assertNotContains('-Werror', $cpp);
+        $rust = $parameters(profile_manager::PROFILE_RUST, 'main.rs')['compileargs'];
+        $this->assertContains('2021', $rust);
+        $this->assertNotContains('warnings', $rust);
+        $this->assertArrayNotHasKey('compileargs', $parameters(profile_manager::PROFILE_JAVA17, 'Main.java'));
+        $this->assertArrayNotHasKey('compileargs', $parameters(profile_manager::PROFILE_PYTHON, 'main.py'));
+
+        // JavaScript caps its heap, and only JavaScript sends interpreter arguments.
+        $javascript = $parameters(profile_manager::PROFILE_JAVASCRIPT, 'main.js');
+        $this->assertSame(['--max-old-space-size=256'], $javascript['interpreterargs']);
+        $this->assertArrayNotHasKey('interpreterargs', $parameters(profile_manager::PROFILE_PYTHON, 'main.py'));
+        $this->assertArrayNotHasKey('interpreterargs', $parameters(profile_manager::PROFILE_R, 'main.R'));
+    }
+
+    /**
+     * Clamping keeps a profile's compiler arguments.
+     */
+    public function test_clamping_keeps_compiler_arguments(): void {
+        $profile = new profile('c', 'C', 'cpp', 'main.cpp', 5, 256, 20, 32, 65536, true, profile::MODE_RUNNER, 0, ['-std=c++17']);
+
+        $this->assertSame(['-std=c++17'], $profile->clamped_to(['cpuseconds' => 1])->get_compile_args());
     }
 
     /**

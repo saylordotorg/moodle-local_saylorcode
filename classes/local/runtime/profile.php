@@ -77,6 +77,12 @@ final class profile {
     /** @var int Memory the interpreter needs merely to start, in megabytes. */
     private int $minmemorymb;
 
+    /** @var string[] Compiler arguments, replacing the runner's defaults when not empty. */
+    private array $compileargs;
+
+    /** @var string[] Interpreter arguments, replacing the runner's defaults when not empty. */
+    private array $interpreterargs;
+
     /**
      * Build a profile.
      *
@@ -92,6 +98,8 @@ final class profile {
      * @param bool $enabled Whether the profile is enabled.
      * @param string $executionmode Where the program runs, one of the MODE_ constants.
      * @param int $minmemorymb Memory the interpreter needs merely to start.
+     * @param string[] $compileargs Compiler arguments; empty keeps the runner's defaults.
+     * @param string[] $interpreterargs Interpreter arguments; empty keeps the runner's defaults.
      */
     public function __construct(
         string $id,
@@ -105,7 +113,9 @@ final class profile {
         int $outputlimitbytes = 65536,
         bool $enabled = true,
         string $executionmode = self::MODE_RUNNER,
-        int $minmemorymb = 0
+        int $minmemorymb = 0,
+        array $compileargs = [],
+        array $interpreterargs = []
     ) {
         $this->id = $id;
         $this->displayname = $displayname;
@@ -119,6 +129,8 @@ final class profile {
         $this->enabled = $enabled;
         $this->executionmode = $executionmode;
         $this->minmemorymb = $minmemorymb;
+        $this->compileargs = array_values($compileargs);
+        $this->interpreterargs = array_values($interpreterargs);
     }
 
     /**
@@ -335,6 +347,36 @@ final class profile {
     }
 
     /**
+     * Compiler arguments, replacing the runner's defaults when not empty.
+     *
+     * They belong to the profile, never to exercise content, so an author
+     * cannot reach the compiler command line (specification section 13.8).
+     * C++ uses them to replace Jobe's -Werror, which would fail a correct
+     * beginner's program over a variable it has not used yet, with -Wall, so
+     * the warning is shown and the program still runs.
+     *
+     * @return string[]
+     */
+    public function get_compile_args(): array {
+        return $this->compileargs;
+    }
+
+    /**
+     * Interpreter arguments, replacing the runner's defaults when not empty.
+     *
+     * Like compiler arguments, these belong to the profile and never to
+     * content. JavaScript uses them to cap the V8 heap: Node 24 needs 1200 MB
+     * of address space merely to start, so the memory limit has to be that
+     * high, and the heap cap is what keeps an ordinary runaway program to a
+     * sensible amount of real memory.
+     *
+     * @return string[]
+     */
+    public function get_interpreter_args(): array {
+        return $this->interpreterargs;
+    }
+
+    /**
      * Whether the interpreter can start within this profile's memory limit.
      *
      * Jobe enforces memory as a ceiling on address space, not on what the
@@ -374,7 +416,9 @@ final class profile {
             min($this->outputlimitbytes, (int) ($maximums['outputlimitbytes'] ?? $this->outputlimitbytes)),
             $this->enabled,
             $this->executionmode,
-            $this->minmemorymb
+            $this->minmemorymb,
+            $this->compileargs,
+            $this->interpreterargs
         );
     }
 }

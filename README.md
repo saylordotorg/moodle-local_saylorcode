@@ -65,11 +65,11 @@ reaches the runner (spec §13.4). The privacy provider declares this transmissio
 - **Execution backend** — Jobe base URL, API key, request timeout.
 - **Resource ceilings** — CPU seconds, memory, disk, processes, output bytes, per-user
   concurrency. These are site maximums that no profile may exceed.
-- **Runtime profiles** — enable or disable a language: Java, JavaScript (Node.js) and R run
+- **Runtime profiles** — enable or disable a language: Java, Python, C++, Rust, JavaScript (Node.js) and R run
   on the runner; HTML and CSS are drawn in the student's browser and never reach it.
-  Disabling a language takes it offline without touching a single exercise. JavaScript and
-  R start disabled, because the runner has to be provisioned for them first — see
-  `docs/runner-setup.md`.
+  Disabling a language takes it offline without touching a single exercise. Every runner
+  language after Java starts disabled, because the runner may need provisioning for it
+  first — see `docs/runner-setup.md`.
 - **Retention** — snapshots kept per attempt, execution log retention.
 
 The Jobe address must not be reachable from the public internet.

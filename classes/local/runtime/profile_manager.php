@@ -19,7 +19,7 @@ namespace local_saylorcode\local\runtime;
 /**
  * Supplies the runtime profiles available on this site.
  *
- * Java, JavaScript and R run on the execution runner. HTML and CSS are rendered
+ * Java, Python, C++, Rust, JavaScript and R run on the execution runner. HTML and CSS are rendered
  * in the student's browser and never reach it. Profiles are defined in code
  * rather than in the database so that a misconfigured row cannot widen a
  * resource limit; site settings may only tighten them.
@@ -31,6 +31,15 @@ namespace local_saylorcode\local\runtime;
 class profile_manager {
     /** @var string The Java profile shipped for the CS101 pilot. */
     public const PROFILE_JAVA17 = 'java17-console';
+
+    /** @var string Python 3 on the runner. */
+    public const PROFILE_PYTHON = 'python3-console';
+
+    /** @var string C++17 compiled by g++ on the runner. */
+    public const PROFILE_CPP = 'cpp17-console';
+
+    /** @var string Rust, 2021 edition, compiled by rustc on the runner. */
+    public const PROFILE_RUST = 'rust-console';
 
     /** @var string JavaScript run by Node.js on the runner. */
     public const PROFILE_JAVASCRIPT = 'javascript-node';
@@ -182,23 +191,82 @@ class profile_manager {
                 65536,
                 $enabled('enablejava')
             ),
+            // Measured on the dev runner: Python 3.10 runs at 64 MB, so it
+            // needs nothing beyond the site maximum.
+            new profile(
+                self::PROFILE_PYTHON,
+                get_string('profilepython', 'local_saylorcode'),
+                'python3',
+                'main.py',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enablepython')
+            ),
+            // Jobe's C++ defaults include -Werror, which turns every warning
+            // into an error. -Wall alone gives students the warnings while
+            // their program still runs; that needs the runner's warnings patch
+            // (CompilesWithWarnings), because stock Jobe fails a compile on any
+            // compiler output at all.
+            new profile(
+                self::PROFILE_CPP,
+                get_string('profilecpp', 'local_saylorcode'),
+                'cpp',
+                'main.cpp',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enablecpp'),
+                profile::MODE_RUNNER,
+                0,
+                ['-std=c++17', '-Wall']
+            ),
+            // Warnings are shown and the program still runs, which needs the
+            // runner's warnings patch for the same reason. One codegen
+            // unit keeps rustc to a single LLVM thread. The compiler gets
+            // Jobe's own 500 MB compile allowance; a compiled program runs
+            // comfortably at 128 MB, so the usual limits stand.
+            new profile(
+                self::PROFILE_RUST,
+                get_string('profilerust', 'local_saylorcode'),
+                'rust',
+                'main.rs',
+                5,
+                256,
+                20,
+                32,
+                65536,
+                $enabled('enablerust'),
+                profile::MODE_RUNNER,
+                0,
+                ['--edition', '2021', '-C', 'codegen-units=1']
+            ),
             // Node's V8 reserves far more address space than it uses, and Jobe
-            // limits address space. Measured on the dev runner (Node 12): it
-            // dies in CodeRange setup at 256 MB and runs at 384 MB. It asks for
-            // 512, and is withheld when the site maximum leaves it under 384.
+            // limits address space. Measured on the dev runner (Node 24): it
+            // fails to reserve its code range at 1100 MB and runs at 1200 MB.
+            // It asks for 1536 and is withheld below 1200. The heap is capped
+            // at 256 MB, so an ordinary runaway program stops there rather
+            // than at the address-space limit. Jobe's default --use_strict is
+            // not sent: on Node 24 it has no effect.
             new profile(
                 self::PROFILE_JAVASCRIPT,
                 get_string('profilejavascript', 'local_saylorcode'),
                 'nodejs',
                 'main.js',
                 5,
-                512,
+                1536,
                 20,
                 32,
                 65536,
                 $enabled('enablejavascript'),
                 profile::MODE_RUNNER,
-                384
+                1200,
+                [],
+                ['--max-old-space-size=256']
             ),
             new profile(
                 self::PROFILE_R,
