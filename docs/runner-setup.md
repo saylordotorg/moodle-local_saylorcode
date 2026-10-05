@@ -116,19 +116,36 @@ when an enabled language is missing from the runner.
 
 ### Bringing an existing runner up to date
 
-`provision-jobe.sh` installs `nodejs`, `r-base-core` and `rustc`, and writes
-Jobe's R and Rust tasks, `app/Libraries/RTask.php` and `RustTask.php`. Stock Jobe
-has neither; it discovers languages from `app/Libraries/<Name>Task.php`, so that
-file is the whole of adding one. Python 3 and C++ come with Jobe. On a runner
-provisioned earlier, install the packages, copy the task blocks out of the
-script, and clear Jobe's language cache:
+`provision-jobe.sh` installs Node 24 from NodeSource, `r-base-core` and `rustc`,
+and writes Jobe's R and Rust tasks, `app/Libraries/RTask.php` and `RustTask.php`.
+Stock Jobe has neither; it discovers languages from
+`app/Libraries/<Name>Task.php`, so that file is the whole of adding one. Python 3
+and C++ come with Jobe. On a runner provisioned earlier:
 
 ```bash
-apt-get install -y --no-install-recommends nodejs r-base-core rustc
+# Node 24, not Ubuntu's nodejs: on 22.04 that is Node 12. Ubuntu's package is
+# split across nodejs and libnode72, and NodeSource's conflicts with the
+# library, so both are removed first.
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+apt-get update
+apt-get remove -y nodejs libnode72
+apt-get install -y nodejs
+[ -e /usr/bin/nodejs ] || ln -s node /usr/bin/nodejs
+nodejs --version   # must print v24.x
+
+apt-get install -y --no-install-recommends r-base-core rustc
 # ...write RTask.php, CompilesWithWarnings.php and RustTask.php, and patch
 # CppTask.php, as in provision-jobe.sh...
 rm -f /tmp/systemd-private-*-apache2.service-*/tmp/jobe_language_cache_file
 ```
+
+To roll Node back: remove `/etc/apt/sources.list.d/nodesource.list`, then
+`apt-get update && apt-get remove -y nodejs && apt-get install -y nodejs`.
+That brings back Ubuntu's Node 12, which needs the old JavaScript profile.
 
 The cache is not in `/tmp`. Apache runs with systemd's `PrivateTmp`, so the
 `/tmp` Jobe writes to is a private directory under the real one; removing
