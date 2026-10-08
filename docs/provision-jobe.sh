@@ -48,7 +48,6 @@ apt-get install -y \
     openjdk-17-jdk \
     python3 \
     python3-pip \
-    r-base-core \
     rustc \
     acl \
     git \
@@ -81,7 +80,64 @@ if [ ! -d /var/www/html/jobe ]; then
 fi
 cd /var/www/html/jobe
 
-# --- R ----------------------------------------------------------------------
+# --- R and its packages -----------------------------------------------------
+# Current R from CRAN's Ubuntu repository rather than Ubuntu's own (4.1 on
+# 22.04), because recent packages expect a newer R. Packages come from r2u,
+# which serves every CRAN package as a prebuilt Ubuntu binary: minutes to
+# install instead of hours of compiling. r2u is pinned above the Ubuntu archive
+# so its r-cran-* builds, which match current R, win.
+#
+# The set is what the R course uses. afex is installed but needs 384 MB and
+# 2.3 s of CPU just to load, so it is not usable under the r-console profile's
+# limits; car covers the same ANOVA. Packages are site-wide: student code has no
+# network, so install.packages() from a program cannot work, by design. r2u's
+# bspm bridge (install.packages -> apt) is deliberately not enabled.
+#
+# The script has no set -e, so every step here is checked: a failed key
+# download, repository or install would otherwise leave old R or missing
+# packages behind while the build reports success. The keys are pinned to the
+# fingerprints they had when this runner was built (CRAN's Ubuntu maintainer,
+# Michael Rutter; r2u's maintainer, Dirk Eddelbuettel), so a swapped key fails
+# the build rather than being trusted.
+CRAN_KEY_FPR=E298A3A825C0D65DFD57CBB651716619E084DAB9
+R2U_KEY_FPR=AE89DB0EE10E60C01100A8F2A1489FE2AB99A21A
+R_MIN_VERSION=4.5
+R_PACKAGES="stringr dplyr tibble readr tidyr purrr forcats lubridate data.table psych car afex modelr readxl ggplot2"
+
+fetch_key() {   # fetch_key <url> <keyring> <fingerprint>
+    curl -fsSL "$1" -o /tmp/apt-key.asc || fail "could not download $1"
+    gpg --dearmor --yes -o "$2" /tmp/apt-key.asc || fail "could not read the key from $1"
+    rm -f /tmp/apt-key.asc
+    gpg --show-keys --with-colons "$2" 2>/dev/null | grep -q "^fpr:::::::::$3:" \
+        || fail "key from $1 does not have the expected fingerprint $3"
+}
+
+fetch_key https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc /etc/apt/keyrings/cran-ubuntu.gpg "$CRAN_KEY_FPR"
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/cran-ubuntu.gpg] https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/" \
+    > /etc/apt/sources.list.d/cran-r.list
+fetch_key https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.asc /etc/apt/keyrings/r2u.gpg "$R2U_KEY_FPR"
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/r2u.gpg] https://r2u.stat.illinois.edu/ubuntu jammy main" \
+    > /etc/apt/sources.list.d/r2u.list
+cat > /etc/apt/preferences.d/99r2u <<'PIN'
+Package: *
+Pin: release o=CRAN-Apt Project
+Pin: release l=CRAN-Apt Packages
+Pin-Priority: 700
+PIN
+
+apt-get update -y || fail "apt-get update failed after adding the CRAN and r2u repositories"
+apt-get install -y --no-install-recommends r-base-core r-recommended \
+    $(for p in $R_PACKAGES; do printf 'r-cran-%s ' "$(echo "$p" | tr '[:upper:]' '[:lower:]')"; done) \
+    || fail "could not install R or its packages"
+
+# Assert the outcome, not just the commands: R is new enough, and every package
+# in the list is installed for it.
+Rscript -e "if (getRversion() < '$R_MIN_VERSION') quit(status = 1)" \
+    || fail "R is $(Rscript -e 'cat(as.character(getRversion()))'), older than $R_MIN_VERSION"
+Rscript -e "p <- strsplit('$R_PACKAGES', ' ')[[1]]; missing <- p[!vapply(p, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing)) { cat('missing:', missing, '\n'); quit(status = 1) }" \
+    || fail "R packages are missing"
+
+# --- R in Jobe --------------------------------------------------------------
 # Stock Jobe has no R. It discovers languages from app/Libraries/<Name>Task.php,
 # so dropping this class in is the whole of adding one; the language id is the
 # lowercased prefix, "r", which is what the r-console profile sends.
@@ -89,6 +145,25 @@ cd /var/www/html/jobe
 # Rscript rather than R: it runs a file non-interactively and does not echo the
 # program back into the output. --vanilla keeps a site or user profile out of
 # the run, so every student starts from the same empty session.
+#
+# Stock Jobe calls any run that wrote to stderr a runtime error, and never looks
+# at the exit status. R writes package startup messages ("Attaching package",
+# "Loading required package") and ordinary warnings to stderr, so correct
+# programs failed. Rscript runs through this wrapper, which appends its real
+# exit status; the task strips it and decides on it. A run with no status line
+# was killed (time, memory, signal) and keeps Jobe's own verdict, so a killed
+# run can never pass.
+install -d -m 0755 /usr/local/lib/jobe
+cat > /usr/local/lib/jobe/rscript-status <<'WRAP'
+#!/bin/sh
+# Run Rscript and append its exit status to stderr, for Jobe's R task.
+/usr/bin/Rscript "$@"
+status=$?
+echo "[saylorcode-exit:$status]" >&2
+exit $status
+WRAP
+chmod 0755 /usr/local/lib/jobe/rscript-status
+
 cat > /var/www/html/jobe/app/Libraries/RTask.php <<'RTASK'
 <?php
 
@@ -127,12 +202,30 @@ class RTask extends LanguageTask
 
     public function getExecutablePath()
     {
-        return '/usr/bin/Rscript';
+        return '/usr/local/lib/jobe/rscript-status';
     }
 
     public function getTargetFile()
     {
         return $this->sourceFileName;
+    }
+
+    public function diagnoseResult()
+    {
+        $status = null;
+        if (preg_match('/\[saylorcode-exit:(\d+)\]\s*$/', $this->stderr, $m)) {
+            $status = (int) $m[1];
+            $this->stderr = rtrim(preg_replace('/\n?\[saylorcode-exit:\d+\]\s*$/', '', $this->stderr), "\n");
+            if ($this->stderr !== '') {
+                $this->stderr .= "\n";
+            }
+        }
+        parent::diagnoseResult();
+        if ($status === 0 && $this->result == LanguageTask::RESULT_RUNTIME_ERROR) {
+            $this->result = LanguageTask::RESULT_SUCCESS;
+        } else if ($status !== null && $status !== 0 && $this->result == LanguageTask::RESULT_SUCCESS) {
+            $this->result = LanguageTask::RESULT_RUNTIME_ERROR;
+        }
     }
 }
 RTASK

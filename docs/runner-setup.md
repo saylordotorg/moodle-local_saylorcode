@@ -116,8 +116,8 @@ when an enabled language is missing from the runner.
 
 ### Bringing an existing runner up to date
 
-`provision-jobe.sh` installs Node 24 from NodeSource, `r-base-core` and `rustc`,
-and writes Jobe's R and Rust tasks, `app/Libraries/RTask.php` and `RustTask.php`.
+`provision-jobe.sh` installs Node 24 from NodeSource, current R with the course's
+packages (see *R and its packages*, below) and `rustc`, and writes Jobe's R and Rust tasks, `app/Libraries/RTask.php` and `RustTask.php`.
 Stock Jobe has neither; it discovers languages from
 `app/Libraries/<Name>Task.php`, so that file is the whole of adding one. Python 3
 and C++ come with Jobe. On a runner provisioned earlier:
@@ -137,9 +137,10 @@ apt-get install -y nodejs
 [ -e /usr/bin/nodejs ] || ln -s node /usr/bin/nodejs
 nodejs --version   # must print v24.x
 
-apt-get install -y --no-install-recommends r-base-core rustc
-# ...write RTask.php, CompilesWithWarnings.php and RustTask.php, and patch
-# CppTask.php, as in provision-jobe.sh...
+apt-get install -y --no-install-recommends rustc
+# ...add the CRAN and r2u repositories and install R and its packages, write
+# /usr/local/lib/jobe/rscript-status, RTask.php, CompilesWithWarnings.php and
+# RustTask.php, and patch CppTask.php, all as in provision-jobe.sh...
 rm -f /tmp/systemd-private-*-apache2.service-*/tmp/jobe_language_cache_file
 ```
 
@@ -152,6 +153,60 @@ The cache is not in `/tmp`. Apache runs with systemd's `PrivateTmp`, so the
 `/tmp/jobe_language_cache_file` does nothing, and `/languages` keeps reporting
 the old list. Restarting Apache also clears it, at the cost of failing any run
 in flight.
+
+### R and its packages
+
+The runner has current R from CRAN's Ubuntu repository (4.6.1 on 2026-10-08)
+rather than Ubuntu's 4.1, and the packages the R course uses as prebuilt
+binaries from [r2u](https://eddelbuettel.github.io/r2u/), which mirrors all of
+CRAN as Ubuntu packages and is pinned above the Ubuntu archive:
+
+stringr, dplyr, tibble, readr, tidyr, purrr, forcats, lubridate, data.table,
+psych, car, afex, modelr, readxl, ggplot2, plus R's recommended packages.
+
+They are installed site-wide. Student code has no network, so
+`install.packages()` cannot work from a program, and r2u's bspm bridge, which
+would turn it into an apt install, is deliberately not enabled. To add a
+package, add its `r-cran-<name>` to the list in `provision-jobe.sh` and install
+it on the runner the same way.
+
+Loading cost, measured in the sandbox under the r-console profile (256 MB,
+5 s of CPU):
+
+| Load | CPU | Memory |
+|---|---|---|
+| one of stringr, dplyr, tibble, readr, tidyr, purrr, forcats, lubridate, modelr | 0.2–0.5 s | 26–37 MB |
+| data.table, psych, car, readxl | under 0.1 s | 21–25 MB |
+| ggplot2 | 0.9 s | 59 MB |
+| eight tidyverse packages together | 1.2 s | 63 MB |
+| afex | **fails at 256 MB** (lme4 runs out of memory); at 384 MB it loads in 2.3 s | |
+
+`afex` is installed but not usable under the profile's limits; `car::Anova`
+gives the same one-way ANOVA. Plots have nowhere to go yet: R runs as a console
+program and only text comes back, so ggplot2 is installed ahead of plot support.
+
+**Messages and warnings are not errors.** Stock Jobe calls any run that wrote
+to stderr a runtime error and never looks at the exit status, and R writes
+package startup messages (`Attaching package: 'dplyr'`, `Loading required
+package: carData`) and ordinary `warning()`s to stderr. So every program using
+dplyr, data.table or car failed. `Rscript` now runs through
+`/usr/local/lib/jobe/rscript-status`, which appends the real exit status to
+stderr, and the R task decides on it: exit 0 is a success, with the messages
+still shown; non-zero is a runtime error. A run with no status line was killed
+(time, memory or a signal) and keeps Jobe's own verdict, so a killed run can
+never count as a success. The status line is stripped before anyone sees the
+output. Checked on the dev runner:
+
+| Program | Result |
+|---|---|
+| `library(dplyr)`, `library(car)`, `warning()`, `message()`, then output | `SUCCESS`, message shown |
+| `stop("boom")`, a syntax error, running out of memory | `RUNTIME_ERROR` |
+| `quit(status = 2)` | `RUNTIME_ERROR` (stock Jobe called this a success: it wrote no stderr) |
+| an infinite loop | `TIME_LIMIT` |
+
+Other languages still use Jobe's stderr rule: a Python program that prints a
+warning, or Java that writes to `System.err`, is a runtime error even when it
+exits cleanly.
 
 ### JavaScript needs a higher memory maximum
 
