@@ -143,8 +143,9 @@ Rscript -e "p <- strsplit('$R_PACKAGES', ' ')[[1]]; missing <- p[!vapply(p, requ
 # lowercased prefix, "r", which is what the r-console profile sends.
 #
 # Rscript rather than R: it runs a file non-interactively and does not echo the
-# program back into the output. --vanilla keeps a site or user profile out of
-# the run, so every student starts from the same empty session.
+# program back into the output. The interpreter arguments keep the site
+# profile, environ files and saved workspaces out of the run, so every student
+# starts from the same empty session; the one profile read is ours, below.
 #
 # Stock Jobe calls any run that wrote to stderr a runtime error, and never looks
 # at the exit status. R writes package startup messages ("Attaching package",
@@ -153,12 +154,44 @@ Rscript -e "p <- strsplit('$R_PACKAGES', ' ')[[1]]; missing <- p[!vapply(p, requ
 # exit status; the task strips it and decides on it. A run with no status line
 # was killed (time, memory, signal) and keeps Jobe's own verdict, so a killed
 # run can never pass.
+#
+# Plots: the profile makes R's default device a 640x480 PNG, so base graphics
+# and ggplot2 write Rplot001.png, Rplot002.png ... without the student's code
+# changing at all. After the program ends the wrapper appends each, up to 4 of
+# up to 512 KB, to stderr as a "[saylorcode-plot:<base64>]" line, before the
+# status line. Moodle takes those lines out, accepts only real PNGs of that size
+# and shows them under the output; nothing that is graded (stdout) is touched.
+# A PNG the student saves under another name with png() is not collected.
 install -d -m 0755 /usr/local/lib/jobe
+cat > /usr/local/lib/jobe/Rprofile-plots <<'RPROF'
+# Read by Rscript for Jobe's R task through R_PROFILE_USER.
+# Plots go to PNG files the wrapper hands back, 640x480 at 96 dpi.
+options(device = function(...) grDevices::png(filename = "Rplot%03d.png", width = 640, height = 480, res = 96, ...))
+RPROF
+chmod 0644 /usr/local/lib/jobe/Rprofile-plots
+
 cat > /usr/local/lib/jobe/rscript-status <<'WRAP'
 #!/bin/sh
-# Run Rscript and append its exit status to stderr, for Jobe's R task.
-/usr/bin/Rscript "$@"
+# Run Rscript for Jobe's R task. Plots go to PNG files (see Rprofile-plots);
+# after the program ends, each is appended to stderr as a marked base64 line,
+# then the exit status, which the task uses to decide the outcome.
+R_PROFILE_USER=/usr/local/lib/jobe/Rprofile-plots /usr/bin/Rscript "$@"
 status=$?
+shown=0
+skipped=0
+for f in Rplot*.png; do
+    [ -f "$f" ] || continue
+    size=$(wc -c < "$f")
+    if [ "$shown" -ge 4 ] || [ "$size" -gt 524288 ]; then
+        skipped=$((skipped + 1))
+        continue
+    fi
+    printf '[saylorcode-plot:%s]\n' "$(base64 -w0 "$f")" >&2
+    shown=$((shown + 1))
+done
+if [ "$skipped" -gt 0 ]; then
+    echo "Note: $skipped more plot(s) not shown. Up to 4 plots are displayed, each up to 512 KB." >&2
+fi
 echo "[saylorcode-exit:$status]" >&2
 exit $status
 WRAP
@@ -181,7 +214,9 @@ class RTask extends LanguageTask
     public function __construct($filename, $input, $params)
     {
         parent::__construct($filename, $input, $params);
-        $this->default_params['interpreterargs'] = array('--vanilla');
+        // --vanilla without --no-init-file, so the wrapper's R_PROFILE_USER
+        // (the plot device) is read and nothing else is.
+        $this->default_params['interpreterargs'] = array('--no-save', '--no-restore', '--no-site-file', '--no-environ');
     }
 
     public static function getVersionCommand()

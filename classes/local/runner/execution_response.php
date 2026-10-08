@@ -64,6 +64,9 @@ final class execution_response {
     /** @var string Machine readable diagnostic code, safe to log and display. */
     private string $diagnostic;
 
+    /** @var string[] Plots the program drew, each a validated base64 PNG. */
+    private array $plots;
+
     /**
      * Build a response.
      *
@@ -78,6 +81,7 @@ final class execution_response {
      * @param float $runtime Seconds executing.
      * @param bool $truncated Whether output was truncated.
      * @param string $diagnostic Safe diagnostic code.
+     * @param string[] $plots Plots the program drew, each a validated base64 PNG.
      * @throws coding_exception If the state is not recognised.
      */
     public function __construct(
@@ -91,7 +95,8 @@ final class execution_response {
         float $queuetime = 0.0,
         float $runtime = 0.0,
         bool $truncated = false,
-        string $diagnostic = ''
+        string $diagnostic = '',
+        array $plots = []
     ) {
         if (!execution_state::is_valid($state)) {
             throw new coding_exception('Unknown execution state: ' . $state);
@@ -107,6 +112,7 @@ final class execution_response {
         $this->runtime = $runtime;
         $this->truncated = $truncated;
         $this->diagnostic = $diagnostic;
+        $this->plots = array_values($plots);
     }
 
     /**
@@ -299,6 +305,19 @@ final class execution_response {
     }
 
     /**
+     * Plots the program drew.
+     *
+     * Each is a base64 PNG that the provider has already decoded, checked for
+     * the PNG signature and size, and re-encoded, so nothing but a PNG can
+     * reach the browser through here.
+     *
+     * @return string[]
+     */
+    public function get_plots(): array {
+        return $this->plots;
+    }
+
+    /**
      * Build the payload a student may receive.
      *
      * Hidden test detail is removed, and stderr and compiler output are passed
@@ -322,6 +341,7 @@ final class execution_response {
             'truncated' => $this->truncated,
             'runtime' => round($this->runtime, 3),
             'diagnostic' => $this->diagnostic,
+            'plots' => $this->plots,
         ];
     }
 }

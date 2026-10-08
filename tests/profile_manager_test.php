@@ -149,6 +149,10 @@ final class profile_manager_test extends \advanced_testcase {
         $this->assertSame([profile_manager::PROFILE_JAVASCRIPT], array_keys($manager->get_starved_profiles()));
 
         $this->assertSame(256, $enabled[profile_manager::PROFILE_R]->get_memory_mb());
+
+        // With room, R gets the 512 MB that plots need.
+        set_config('maxmemorymb', 1536, 'local_saylorcode');
+        $this->assertSame(512, (new profile_manager())->get_profile(profile_manager::PROFILE_R)->get_memory_mb());
         $this->assertSame(256, $enabled[profile_manager::PROFILE_JAVA17]->get_memory_mb());
     }
 
