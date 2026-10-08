@@ -48,7 +48,6 @@ apt-get install -y \
     openjdk-17-jdk \
     python3 \
     python3-pip \
-    r-base-core \
     rustc \
     acl \
     git \
@@ -81,7 +80,42 @@ if [ ! -d /var/www/html/jobe ]; then
 fi
 cd /var/www/html/jobe
 
-# --- R ----------------------------------------------------------------------
+# --- R and its packages -----------------------------------------------------
+# Current R from CRAN's Ubuntu repository rather than Ubuntu's own (4.1 on
+# 22.04), because recent packages expect a newer R. Packages come from r2u,
+# which serves every CRAN package as a prebuilt Ubuntu binary: minutes to
+# install instead of hours of compiling. r2u is pinned above the Ubuntu archive
+# so its r-cran-* builds, which match current R, win.
+#
+# The set is what the R course uses. afex is installed but needs 384 MB and
+# 2.3 s of CPU just to load, so it is not usable under the r-console profile's
+# limits; car covers the same ANOVA. Packages are site-wide: student code has no
+# network, so install.packages() from a program cannot work, by design. r2u's
+# bspm bridge (install.packages -> apt) is deliberately not enabled.
+curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/cran-ubuntu.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/cran-ubuntu.gpg] https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/" \
+    > /etc/apt/sources.list.d/cran-r.list
+curl -fsSL https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.asc \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/r2u.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/r2u.gpg] https://r2u.stat.illinois.edu/ubuntu jammy main" \
+    > /etc/apt/sources.list.d/r2u.list
+cat > /etc/apt/preferences.d/99r2u <<'PIN'
+Package: *
+Pin: release o=CRAN-Apt Project
+Pin: release l=CRAN-Apt Packages
+Pin-Priority: 700
+PIN
+apt-get update -y
+apt-get install -y --no-install-recommends \
+    r-base-core r-recommended \
+    r-cran-stringr r-cran-dplyr r-cran-tibble r-cran-readr r-cran-tidyr r-cran-purrr \
+    r-cran-forcats r-cran-lubridate r-cran-data.table r-cran-psych r-cran-car r-cran-afex \
+    r-cran-modelr r-cran-readxl r-cran-ggplot2
+Rscript -e 'for (p in c("stringr","dplyr","readr","data.table","psych","car","modelr","ggplot2")) suppressPackageStartupMessages(library(p, character.only = TRUE))' \
+    || fail "R packages did not load"
+
+# --- R in Jobe --------------------------------------------------------------
 # Stock Jobe has no R. It discovers languages from app/Libraries/<Name>Task.php,
 # so dropping this class in is the whole of adding one; the language id is the
 # lowercased prefix, "r", which is what the r-console profile sends.
@@ -89,6 +123,25 @@ cd /var/www/html/jobe
 # Rscript rather than R: it runs a file non-interactively and does not echo the
 # program back into the output. --vanilla keeps a site or user profile out of
 # the run, so every student starts from the same empty session.
+#
+# Stock Jobe calls any run that wrote to stderr a runtime error, and never looks
+# at the exit status. R writes package startup messages ("Attaching package",
+# "Loading required package") and ordinary warnings to stderr, so correct
+# programs failed. Rscript runs through this wrapper, which appends its real
+# exit status; the task strips it and decides on it. A run with no status line
+# was killed (time, memory, signal) and keeps Jobe's own verdict, so a killed
+# run can never pass.
+install -d -m 0755 /usr/local/lib/jobe
+cat > /usr/local/lib/jobe/rscript-status <<'WRAP'
+#!/bin/sh
+# Run Rscript and append its exit status to stderr, for Jobe's R task.
+/usr/bin/Rscript "$@"
+status=$?
+echo "[saylorcode-exit:$status]" >&2
+exit $status
+WRAP
+chmod 0755 /usr/local/lib/jobe/rscript-status
+
 cat > /var/www/html/jobe/app/Libraries/RTask.php <<'RTASK'
 <?php
 
@@ -127,12 +180,30 @@ class RTask extends LanguageTask
 
     public function getExecutablePath()
     {
-        return '/usr/bin/Rscript';
+        return '/usr/local/lib/jobe/rscript-status';
     }
 
     public function getTargetFile()
     {
         return $this->sourceFileName;
+    }
+
+    public function diagnoseResult()
+    {
+        $status = null;
+        if (preg_match('/\[saylorcode-exit:(\d+)\]\s*$/', $this->stderr, $m)) {
+            $status = (int) $m[1];
+            $this->stderr = rtrim(preg_replace('/\n?\[saylorcode-exit:\d+\]\s*$/', '', $this->stderr), "\n");
+            if ($this->stderr !== '') {
+                $this->stderr .= "\n";
+            }
+        }
+        parent::diagnoseResult();
+        if ($status === 0 && $this->result == LanguageTask::RESULT_RUNTIME_ERROR) {
+            $this->result = LanguageTask::RESULT_SUCCESS;
+        } else if ($status !== null && $status !== 0 && $this->result == LanguageTask::RESULT_SUCCESS) {
+            $this->result = LanguageTask::RESULT_RUNTIME_ERROR;
+        }
     }
 }
 RTASK
