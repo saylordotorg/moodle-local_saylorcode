@@ -92,12 +92,30 @@ cd /var/www/html/jobe
 # limits; car covers the same ANOVA. Packages are site-wide: student code has no
 # network, so install.packages() from a program cannot work, by design. r2u's
 # bspm bridge (install.packages -> apt) is deliberately not enabled.
-curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
-    | gpg --dearmor --yes -o /etc/apt/keyrings/cran-ubuntu.gpg
+#
+# The script has no set -e, so every step here is checked: a failed key
+# download, repository or install would otherwise leave old R or missing
+# packages behind while the build reports success. The keys are pinned to the
+# fingerprints they had when this runner was built (CRAN's Ubuntu maintainer,
+# Michael Rutter; r2u's maintainer, Dirk Eddelbuettel), so a swapped key fails
+# the build rather than being trusted.
+CRAN_KEY_FPR=E298A3A825C0D65DFD57CBB651716619E084DAB9
+R2U_KEY_FPR=AE89DB0EE10E60C01100A8F2A1489FE2AB99A21A
+R_MIN_VERSION=4.5
+R_PACKAGES="stringr dplyr tibble readr tidyr purrr forcats lubridate data.table psych car afex modelr readxl ggplot2"
+
+fetch_key() {   # fetch_key <url> <keyring> <fingerprint>
+    curl -fsSL "$1" -o /tmp/apt-key.asc || fail "could not download $1"
+    gpg --dearmor --yes -o "$2" /tmp/apt-key.asc || fail "could not read the key from $1"
+    rm -f /tmp/apt-key.asc
+    gpg --show-keys --with-colons "$2" 2>/dev/null | grep -q "^fpr:::::::::$3:" \
+        || fail "key from $1 does not have the expected fingerprint $3"
+}
+
+fetch_key https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc /etc/apt/keyrings/cran-ubuntu.gpg "$CRAN_KEY_FPR"
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/cran-ubuntu.gpg] https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/" \
     > /etc/apt/sources.list.d/cran-r.list
-curl -fsSL https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.asc \
-    | gpg --dearmor --yes -o /etc/apt/keyrings/r2u.gpg
+fetch_key https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.asc /etc/apt/keyrings/r2u.gpg "$R2U_KEY_FPR"
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/r2u.gpg] https://r2u.stat.illinois.edu/ubuntu jammy main" \
     > /etc/apt/sources.list.d/r2u.list
 cat > /etc/apt/preferences.d/99r2u <<'PIN'
@@ -106,14 +124,18 @@ Pin: release o=CRAN-Apt Project
 Pin: release l=CRAN-Apt Packages
 Pin-Priority: 700
 PIN
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    r-base-core r-recommended \
-    r-cran-stringr r-cran-dplyr r-cran-tibble r-cran-readr r-cran-tidyr r-cran-purrr \
-    r-cran-forcats r-cran-lubridate r-cran-data.table r-cran-psych r-cran-car r-cran-afex \
-    r-cran-modelr r-cran-readxl r-cran-ggplot2
-Rscript -e 'for (p in c("stringr","dplyr","readr","data.table","psych","car","modelr","ggplot2")) suppressPackageStartupMessages(library(p, character.only = TRUE))' \
-    || fail "R packages did not load"
+
+apt-get update -y || fail "apt-get update failed after adding the CRAN and r2u repositories"
+apt-get install -y --no-install-recommends r-base-core r-recommended \
+    $(for p in $R_PACKAGES; do printf 'r-cran-%s ' "$(echo "$p" | tr '[:upper:]' '[:lower:]')"; done) \
+    || fail "could not install R or its packages"
+
+# Assert the outcome, not just the commands: R is new enough, and every package
+# in the list is installed for it.
+Rscript -e "if (getRversion() < '$R_MIN_VERSION') quit(status = 1)" \
+    || fail "R is $(Rscript -e 'cat(as.character(getRversion()))'), older than $R_MIN_VERSION"
+Rscript -e "p <- strsplit('$R_PACKAGES', ' ')[[1]]; missing <- p[!vapply(p, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing)) { cat('missing:', missing, '\n'); quit(status = 1) }" \
+    || fail "R packages are missing"
 
 # --- R in Jobe --------------------------------------------------------------
 # Stock Jobe has no R. It discovers languages from app/Libraries/<Name>Task.php,
