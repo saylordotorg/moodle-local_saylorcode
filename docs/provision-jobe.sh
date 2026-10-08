@@ -177,20 +177,26 @@ cat > /usr/local/lib/jobe/rscript-status <<'WRAP'
 # then the exit status, which the task uses to decide the outcome.
 R_PROFILE_USER=/usr/local/lib/jobe/Rprofile-plots /usr/bin/Rscript "$@"
 status=$?
+# Jobe stops a run whose stderr passes its stream limit (2 MB by default), and
+# base64 is a third larger than the PNG. So the images together are capped at
+# 1 MB of PNG, about 1.33 MB of base64, leaving room for the program's own
+# stderr and the status line. Real plots are 10 to 50 KB.
 shown=0
 skipped=0
+total=0
 for f in Rplot*.png; do
     [ -f "$f" ] || continue
     size=$(wc -c < "$f")
-    if [ "$shown" -ge 4 ] || [ "$size" -gt 524288 ]; then
+    if [ "$shown" -ge 4 ] || [ "$size" -gt 524288 ] || [ $((total + size)) -gt 1048576 ]; then
         skipped=$((skipped + 1))
         continue
     fi
     printf '[saylorcode-plot:%s]\n' "$(base64 -w0 "$f")" >&2
     shown=$((shown + 1))
+    total=$((total + size))
 done
 if [ "$skipped" -gt 0 ]; then
-    echo "Note: $skipped more plot(s) not shown. Up to 4 plots are displayed, each up to 512 KB." >&2
+    echo "Note: $skipped more plot(s) not shown. Up to 4 plots are displayed, 1 MB in all." >&2
 fi
 echo "[saylorcode-exit:$status]" >&2
 exit $status

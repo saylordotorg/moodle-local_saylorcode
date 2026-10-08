@@ -368,11 +368,15 @@ class jobe_provider implements provider_interface {
         $kept = [];
         foreach (explode("\n", $stderr) as $line) {
             $trimmed = rtrim($line, "\r");
-            if (strncmp($trimmed, '[saylorcode-plot:', 17) !== 0 || substr($trimmed, -1) !== ']') {
+            if (strncmp($trimmed, '[saylorcode-plot:', 17) !== 0) {
                 $kept[] = $line;
                 continue;
             }
-            if (count($plots) >= self::PLOT_MAX_COUNT) {
+            // A marker line is never shown, even one cut short. Jobe stops a
+            // run whose stderr passes its stream limit, which can happen part
+            // way through an image; the half line is not an image, and base64
+            // is not something to show a student.
+            if (substr($trimmed, -1) !== ']' || count($plots) >= self::PLOT_MAX_COUNT) {
                 continue;
             }
             $binary = base64_decode(substr($trimmed, 17, -1), true);

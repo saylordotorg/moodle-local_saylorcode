@@ -94,6 +94,22 @@ final class plot_extraction_test extends \advanced_testcase {
     }
 
     /**
+     * A marker line cut short, as when Jobe stops a run at its stream limit
+     * part way through an image, is dropped and never shown.
+     */
+    public function test_a_truncated_marker_is_never_shown(): void {
+        $stderr = "Warning message:\nsomething\n" . self::line(self::PNG) . "\n[saylorcode-plot:iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+
+        $plots = [];
+        $clean = jobe_provider::extract_plots($stderr, $plots);
+
+        $this->assertSame([self::PNG], $plots);
+        $this->assertStringNotContainsString('saylorcode-plot', $clean);
+        $this->assertStringNotContainsString('iVBORw0KGgo', $clean);
+        $this->assertStringContainsString('something', $clean);
+    }
+
+    /**
      * An image over the size limit is dropped.
      */
     public function test_an_oversized_image_is_dropped(): void {

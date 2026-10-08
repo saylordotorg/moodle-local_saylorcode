@@ -197,10 +197,14 @@ the workspace, up to 4 per run.
   that profile is read and no other.
 - After the program ends, the wrapper appends each image of up to 512 KB to
   stderr as a `[saylorcode-plot:<base64>]` line, before the exit-status line,
-  and a plain note if any were skipped.
+  and a plain note if any were skipped. The images together are capped at 1 MB
+  of PNG (about 1.33 MB of base64), because Jobe stops a run whose stderr
+  passes its 2 MB stream limit. Real plots are 10 to 50 KB.
 - `jobe_provider` takes those lines out of stderr before anything else reads it,
   and keeps an image only if it decodes strictly as base64, starts with the PNG
-  signature and is no larger than 512 KB, at most 4, re-encoded. The workspace
+  signature and is no larger than 512 KB, at most 4, re-encoded. A marker line
+  cut short (a run stopped at the stream limit mid-image) is dropped, never
+  shown. The workspace
   checks the shape again before using it as a `data:image/png` source. Only a
   plain Run shows plots; Check and Submit compare standard output, as before.
 - Images are never stored: execution records hold states and timings only.
