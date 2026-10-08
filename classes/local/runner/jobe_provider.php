@@ -34,6 +34,15 @@ use local_saylorcode\local\runtime\profile_manager;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class jobe_provider implements provider_interface {
+    /** @var int Most plots returned from one run. */
+    public const PLOT_MAX_COUNT = 4;
+
+    /** @var int Largest plot accepted, in bytes of PNG. */
+    public const PLOT_MAX_BYTES = 524288;
+
+    /** @var string The eight bytes every PNG file starts with. */
+    public const PNG_SIGNATURE = "\x89PNG\r\n\x1a\n";
+
     /** @var int Jobe reported a compilation failure. */
     private const JOBE_COMPILATION_ERROR = 11;
 
@@ -304,6 +313,12 @@ class jobe_provider implements provider_interface {
         $stderr = (string) ($decoded['stderr'] ?? '');
         $cmpinfo = (string) ($decoded['cmpinfo'] ?? '');
 
+        // Plots travel in stderr as marked lines, and come out before anything
+        // else reads stderr: a PNG in base64 is not output for the student to
+        // read, and the sanitiser would mistake its slashes for paths.
+        $plots = [];
+        $stderr = self::extract_plots($stderr, $plots);
+
         $truncated = false;
         $limit = $profile->get_output_limit_bytes();
         $stdout = output_sanitiser::truncate($stdout, $limit, $truncated);
@@ -321,8 +336,60 @@ class jobe_provider implements provider_interface {
             0.0,
             $elapsed,
             $truncated,
-            'jobe_outcome_' . $outcome
+            'jobe_outcome_' . $outcome,
+            $plots
         );
+    }
+
+    /**
+     * Take the plot lines out of the runner's stderr.
+     *
+     * The runner's R wrapper writes each image the program drew as a line
+     * "[saylorcode-plot:<base64 PNG>]". A line is accepted only if it decodes
+     * strictly as base64, starts with the PNG signature and is no larger than
+     * PLOT_MAX_BYTES, and at most PLOT_MAX_COUNT are kept. Accepted images are
+     * re-encoded, so the browser only ever receives canonical base64 of a PNG.
+     * Every marked line is removed from stderr, accepted or not.
+     *
+     * Split by lines rather than matched with one regular expression: an image
+     * line is tens of kilobytes, and a pattern failing on the backtrack limit
+     * would leave raw base64 in front of the student.
+     *
+     * @param string $stderr The runner's stderr.
+     * @param string[] $plots Receives the accepted plots.
+     * @return string Stderr without the plot lines.
+     */
+    public static function extract_plots(string $stderr, array &$plots): string {
+        $plots = [];
+        if (strpos($stderr, '[saylorcode-plot:') === false) {
+            return $stderr;
+        }
+
+        $kept = [];
+        foreach (explode("\n", $stderr) as $line) {
+            $trimmed = rtrim($line, "\r");
+            if (strncmp($trimmed, '[saylorcode-plot:', 17) !== 0) {
+                $kept[] = $line;
+                continue;
+            }
+            // A marker line is never shown, even one cut short. Jobe stops a
+            // run whose stderr passes its stream limit, which can happen part
+            // way through an image; the half line is not an image, and base64
+            // is not something to show a student.
+            if (substr($trimmed, -1) !== ']' || count($plots) >= self::PLOT_MAX_COUNT) {
+                continue;
+            }
+            $binary = base64_decode(substr($trimmed, 17, -1), true);
+            if (
+                $binary !== false
+                && strlen($binary) <= self::PLOT_MAX_BYTES
+                && strncmp($binary, self::PNG_SIGNATURE, 8) === 0
+            ) {
+                $plots[] = base64_encode($binary);
+            }
+        }
+
+        return implode("\n", $kept);
     }
 
     /**

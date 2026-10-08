@@ -268,13 +268,19 @@ class profile_manager {
                 [],
                 ['--max-old-space-size=256']
             ),
+            // R asks for 512 MB of address space for plots. Measured on the dev
+            // runner: ggplot2 with facets and a smoother crashes at 256 and
+            // 384 MB, because the graphics stack starts threads that each
+            // reserve stack, and renders at 512 using 1.4 to 2.8 s of CPU.
+            // Plain R runs at 128 MB, so there is no floor: under a lower site
+            // maximum R still runs, and only the heavier plots fail.
             new profile(
                 self::PROFILE_R,
                 get_string('profiler', 'local_saylorcode'),
                 'r',
                 'main.R',
                 5,
-                256,
+                512,
                 20,
                 32,
                 65536,

@@ -170,8 +170,8 @@ would turn it into an apt install, is deliberately not enabled. To add a
 package, add its `r-cran-<name>` to the list in `provision-jobe.sh` and install
 it on the runner the same way.
 
-Loading cost, measured in the sandbox under the r-console profile (256 MB,
-5 s of CPU):
+Loading cost, measured in the sandbox at 256 MB and 5 s of CPU (the r-console
+profile now asks for 512 MB, for plots; see below):
 
 | Load | CPU | Memory |
 |---|---|---|
@@ -181,9 +181,48 @@ Loading cost, measured in the sandbox under the r-console profile (256 MB,
 | eight tidyverse packages together | 1.2 s | 63 MB |
 | afex | **fails at 256 MB** (lme4 runs out of memory); at 384 MB it loads in 2.3 s | |
 
-`afex` is installed but not usable under the profile's limits; `car::Anova`
-gives the same one-way ANOVA. Plots have nowhere to go yet: R runs as a console
-program and only text comes back, so ggplot2 is installed ahead of plot support.
+`afex` loads at 384 MB and above, but takes 2.3 s of the 5 s just to load, so
+it suits only very short programs; `car::Anova` gives the same one-way ANOVA
+much faster.
+
+### Plots from R
+
+R programs can draw: base graphics and ggplot2 plots appear under the output in
+the workspace, up to 4 per run.
+
+- `/usr/local/lib/jobe/Rprofile-plots`, read through `R_PROFILE_USER`, makes R's
+  default device a 640x480 PNG at 96 dpi. The student's code is unchanged: a
+  `plot()` or a printed ggplot writes `Rplot001.png`, `Rplot002.png` and so on.
+  The R task's interpreter arguments are `--vanilla` minus `--no-init-file`, so
+  that profile is read and no other.
+- After the program ends, the wrapper appends each image of up to 512 KB to
+  stderr as a `[saylorcode-plot:<base64>]` line, before the exit-status line,
+  and a plain note if any were skipped. The images together are capped at 1 MB
+  of PNG (about 1.33 MB of base64), because Jobe stops a run whose stderr
+  passes its 2 MB stream limit. Real plots are 10 to 50 KB.
+- `jobe_provider` takes those lines out of stderr before anything else reads it,
+  and keeps an image only if it decodes strictly as base64, starts with the PNG
+  signature and is no larger than 512 KB, at most 4, re-encoded. A marker line
+  cut short (a run stopped at the stream limit mid-image) is dropped, never
+  shown. The workspace
+  checks the shape again before using it as a `data:image/png` source. Only a
+  plain Run shows plots; Check and Submit compare standard output, as before.
+- Images are never stored: execution records hold states and timings only.
+- A file the student saves under another name with `png()` is not collected.
+
+**Plots need 512 MB.** The graphics stack starts threads, each reserving stack,
+and Jobe limits address space. Measured on the dev runner:
+
+| Plot | 256 MB | 384 MB | 512 MB |
+|---|---|---|---|
+| base graphics (`hist`, `plot`) | renders, 0.5 s | renders | renders |
+| ggplot2 scatter, histogram, boxplot, time series | fails (thread creation) | renders, 1.4 to 1.6 s | renders, 1.4 to 1.6 s |
+| ggplot2 with facets and a smoother | fails | fails | renders, 2.7 s |
+
+So the r-console profile asks for 512 MB. It has no floor: under a site
+maximum below 512 MB, R still runs and base plots still draw; only ggplot2 can
+fail. A runaway R program can now use up to 512 MB of real memory rather than
+256; include that in any capacity planning.
 
 **Messages and warnings are not errors.** Stock Jobe calls any run that wrote
 to stderr a runtime error and never looks at the exit status, and R writes
